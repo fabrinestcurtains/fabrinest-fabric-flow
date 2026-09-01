@@ -15,6 +15,7 @@ import { NewOrderModal } from "@/components/new-order-modal";
 import { AdvancedSearchModal } from "@/components/advanced-search-modal";
 import { OrderStatusBadge } from "@/components/status-badges";
 import { OrderDetailSheet } from "@/components/order-detail-sheet";
+import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 
 export const Route = createFileRoute("/_authenticated/")({
   ssr: false,
@@ -215,16 +216,22 @@ function Dashboard() {
               </div>
             </div>
             <div className="h-[110px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={allTimeDue.data?.monthlyDue ?? []}>
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.7)" }} axisLine={false} tickLine={false} />
-                  <Line type="monotone" dataKey="due" stroke="#ffffff" strokeWidth={2} dot={{ r: 2, fill: "#fff" }} />
-                  <Tooltip
-                    formatter={(v: number) => fmtAED(v)}
-                    contentStyle={{ background: "#7a1f1f", border: "none", color: "#fff", fontSize: 11 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <ChartErrorBoundary>
+                {!(allTimeDue.data?.monthlyDue && allTimeDue.data.monthlyDue.length > 0) ? (
+                  <div className="flex items-center justify-center h-full text-xs text-white/70">No due trend data</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={allTimeDue.data?.monthlyDue ?? []}>
+                      <XAxis dataKey="label" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.7)" }} axisLine={false} tickLine={false} />
+                      <Line type="monotone" dataKey="due" stroke="#ffffff" strokeWidth={2} dot={{ r: 2, fill: "#fff" }} />
+                      <Tooltip
+                        formatter={(v: number) => fmtAED(v)}
+                        contentStyle={{ background: "#7a1f1f", border: "none", color: "#fff", fontSize: 11 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartErrorBoundary>
             </div>
           </div>
         </div>
@@ -265,23 +272,29 @@ function Dashboard() {
           </div>
         </div>
         <div className="h-[220px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={yearChart.data ?? []}>
-              <defs>
-                <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#c19e65" stopOpacity={0.25} />
-                  <stop offset="100%" stopColor="#c19e65" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
-              <Tooltip formatter={(v: number) => fmtAED(v)} />
-              <Area type="monotone" dataKey="sales" stroke="none" fill="url(#salesFill)" />
-              <Line type="monotone" dataKey="sales" name="Total Sales" stroke="#c19e65" strokeWidth={2} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="expenses" name="Total Expenses" stroke="#dc2626" strokeWidth={2} dot={{ r: 3 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
+          <ChartErrorBoundary>
+            {!(yearChart.data && yearChart.data.length > 0) ? (
+              <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No financial data available</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={yearChart.data ?? []}>
+                  <defs>
+                    <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#c19e65" stopOpacity={0.25} />
+                      <stop offset="100%" stopColor="#c19e65" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
+                  <Tooltip formatter={(v: number) => fmtAED(v)} />
+                  <Area type="monotone" dataKey="sales" stroke="none" fill="url(#salesFill)" />
+                  <Line type="monotone" dataKey="sales" name="Total Sales" stroke="#c19e65" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="expenses" name="Total Expenses" stroke="#dc2626" strokeWidth={2} dot={{ r: 3 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            )}
+          </ChartErrorBoundary>
         </div>
       </div>
 
@@ -405,14 +418,16 @@ export function NetProfitCard({
         {/* Donut */}
         <div className="flex flex-col items-center">
           <div className="relative w-full h-[220px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={donutData} dataKey="value" innerRadius={70} outerRadius={100} startAngle={90} endAngle={-270} stroke="none">
-                  {donutData.map((d, i) => <Cell key={i} fill={d.color} />)}
-                </Pie>
-                <Tooltip formatter={(v: number) => fmtAED(v)} />
-              </PieChart>
-            </ResponsiveContainer>
+            <ChartErrorBoundary>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={donutData} dataKey="value" innerRadius={70} outerRadius={100} startAngle={90} endAngle={-270} stroke="none">
+                    {donutData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                  </Pie>
+                  <Tooltip formatter={(v: number) => fmtAED(v)} />
+                </PieChart>
+              </ResponsiveContainer>
+            </ChartErrorBoundary>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{profitLabel}</div>
               <div className={`text-[20px] font-bold ${isLoss ? "text-red-600" : "text-purple-700"}`}>{fmtAED(absProfit)}</div>
@@ -435,17 +450,23 @@ export function NetProfitCard({
           <div className="mt-4">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Profit Health Meter</div>
             <div className="h-[160px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={yearData} barGap={2} barCategoryGap="18%">
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
-                  <Tooltip formatter={(v: number) => fmtAED(v)} />
-                  <Bar dataKey="collection" fill="#16a34a" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="expenses" fill="#ef4444" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="netProfit" fill="#7c3aed" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <ChartErrorBoundary>
+                {!(yearData && yearData.length > 0) ? (
+                  <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No yearly data available</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={yearData} barGap={2} barCategoryGap="18%">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
+                      <Tooltip formatter={(v: number) => fmtAED(v)} />
+                      <Bar dataKey="collection" fill="#16a34a" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="expenses" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="netProfit" fill="#7c3aed" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartErrorBoundary>
             </div>
           </div>
         </div>

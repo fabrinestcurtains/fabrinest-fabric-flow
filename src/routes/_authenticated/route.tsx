@@ -1,11 +1,11 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
 import { AppShell } from "@/components/app-shell";
+import { supabase } from "@/lib/supabase";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
   beforeLoad: async ({ location }) => {
-    const { supabase } = await import("@/lib/supabase");
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
       const safePath = location.pathname + (location.searchStr || "");
@@ -16,10 +16,8 @@ export const Route = createFileRoute("/_authenticated")({
 });
 
 function Layout() {
-  const { loading, user } = useAuth();
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-muted-foreground">Loading…</div>;
-  }
+  const { user } = useAuth();
+  // beforeLoad already ensures session exists, so if no user, return null without Loading flash
   if (!user) return null;
   return (
     <AppShell>

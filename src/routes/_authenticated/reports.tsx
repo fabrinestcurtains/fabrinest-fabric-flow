@@ -16,6 +16,7 @@ import { supabase, type Order, type Expense, ACTIVE_ORDERS_FILTER } from "@/lib/
 import { fmtAED, fmtAEDShort, fmtDate, listMonthsSince, monthKey, dueOf, ONGOING_STATUSES, displayPaymentStatus } from "@/lib/format";
 import { toast } from "sonner";
 import { NetProfitCard, SectionLabel } from "./index";
+import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 
 export const Route = createFileRoute("/_authenticated/reports")({
   ssr: false,
@@ -514,15 +515,21 @@ function ReportsPage() {
               <div>
                 <div className="text-xs font-semibold text-gold-900 mb-1">Monthly Due Trend — {new Date().getFullYear()}</div>
                 <div className="h-[180px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={allTimeDue.data?.monthlyDue ?? []}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
-                      <Tooltip formatter={(v: number) => fmtAED(v)} />
-                      <Line type="monotone" dataKey="due" stroke="#dc2626" strokeWidth={2} dot={{ r: 3 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  <ChartErrorBoundary>
+                    {!(allTimeDue.data?.monthlyDue && allTimeDue.data.monthlyDue.length > 0) ? (
+                      <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No due trend data available</div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={allTimeDue.data?.monthlyDue ?? []}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
+                          <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
+                          <Tooltip formatter={(v: number) => fmtAED(v)} />
+                          <Line type="monotone" dataKey="due" stroke="#dc2626" strokeWidth={2} dot={{ r: 3 }} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    )}
+                  </ChartErrorBoundary>
                 </div>
               </div>
             </div>
@@ -553,17 +560,23 @@ function ReportsPage() {
           <div className="bg-white border border-gold-100 rounded-xl p-4">
             <div className="font-semibold text-gold-900 mb-3">Monthly Orders ({selectedDate.getFullYear()})</div>
             <div className="h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={yearData.data ?? []}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <Tooltip cursor={{ fill: "rgba(193,158,101,0.1)" }} />
-                  <Bar dataKey="orders" radius={[6, 6, 0, 0]}>
-                    {(yearData.data ?? []).map((e) => <Cell key={e.i} fill={e.i === monthIdx ? "#c19e65" : "#f0e4cc"} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <ChartErrorBoundary>
+                {!(yearData.data && yearData.data.length > 0) ? (
+                  <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No order data available</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={yearData.data ?? []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <Tooltip cursor={{ fill: "rgba(193,158,101,0.1)" }} />
+                      <Bar dataKey="orders" radius={[6, 6, 0, 0]}>
+                        {(yearData.data ?? []).map((e) => <Cell key={e.i} fill={e.i === monthIdx ? "#c19e65" : "#f0e4cc"} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartErrorBoundary>
             </div>
           </div>
 
@@ -579,16 +592,22 @@ function ReportsPage() {
               </div>
             </div>
             <div className="h-[180px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={yearData.data ?? []}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
-                  <Tooltip formatter={(v: number) => fmtAED(v)} />
-                  <Line type="monotone" dataKey="sales" stroke="#c19e65" strokeWidth={2} dot={{ r: 3 }} />
-                  <Line type="monotone" dataKey="collection" stroke="#7c3aed" strokeWidth={2} dot={{ r: 3 }} />
-                </LineChart>
-              </ResponsiveContainer>
+              <ChartErrorBoundary>
+                {!(yearData.data && yearData.data.length > 0) ? (
+                  <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No financial flow data available</div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={yearData.data ?? []}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
+                      <Tooltip formatter={(v: number) => fmtAED(v)} />
+                      <Line type="monotone" dataKey="sales" stroke="#c19e65" strokeWidth={2} dot={{ r: 3 }} />
+                      <Line type="monotone" dataKey="collection" stroke="#7c3aed" strokeWidth={2} dot={{ r: 3 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                )}
+              </ChartErrorBoundary>
             </div>
           </div>
         </div>
@@ -673,17 +692,23 @@ function ReportsPage() {
             </div>
           </div>
           <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={yearData.data ?? []} barGap={2} barCategoryGap="18%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
-                <Tooltip formatter={(v: number) => fmtAED(v)} />
-                <Bar dataKey="collection" fill="#16a34a" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="expenses" fill="#ef4444" radius={[3, 3, 0, 0]} />
-                <Bar dataKey="netProfit" fill="#7c3aed" radius={[3, 3, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <ChartErrorBoundary>
+              {!(yearData.data && yearData.data.length > 0) ? (
+                <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No profit history data available</div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={yearData.data ?? []} barGap={2} barCategoryGap="18%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
+                    <Tooltip formatter={(v: number) => fmtAED(v)} />
+                    <Bar dataKey="collection" fill="#16a34a" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="expenses" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                    <Bar dataKey="netProfit" fill="#7c3aed" radius={[3, 3, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </ChartErrorBoundary>
           </div>
         </div>
       </div>

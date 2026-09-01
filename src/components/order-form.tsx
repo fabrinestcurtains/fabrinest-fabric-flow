@@ -226,7 +226,15 @@ export function OrderForm({
         );
         onDone?.(id);
       }
-      qc.invalidateQueries();
+      qc.invalidateQueries({ queryKey: ["orders-list"] });
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      qc.invalidateQueries({ queryKey: ["customers-paged"] });
+      if (mode.kind === "edit") {
+        qc.invalidateQueries({ queryKey: ["order", mode.order.id] });
+      }
+      qc.invalidateQueries({ queryKey: ["all-time-due"] });
+      qc.invalidateQueries({ queryKey: ["dash-monthly"] });
+      qc.invalidateQueries({ queryKey: ["dash-monthly-v3"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to save order");
     } finally {

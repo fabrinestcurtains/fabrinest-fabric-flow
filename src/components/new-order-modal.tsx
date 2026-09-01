@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { supabase, sanitizeSearch, type Customer } from "@/lib/supabase";
 import { OrderForm } from "./order-form";
 import { UserPlus, Users } from "lucide-react";
+import { useDebouncedValue } from "@/hooks/use-debounce";
 
 export function NewOrderModal({
   open,
@@ -19,12 +20,13 @@ export function NewOrderModal({
   const [step, setStep] = useState<"choose" | "new" | "existing">("choose");
   const [pickedCustomer, setPickedCustomer] = useState<Customer | null>(null);
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q, 300);
 
   const results = useQuery({
-    queryKey: ["cust-search", q],
-    enabled: step === "existing" && q.length > 0,
+    queryKey: ["cust-search", debouncedQ],
+    enabled: step === "existing" && debouncedQ.length > 0,
     queryFn: async () => {
-      const sanitized = sanitizeSearch(q);
+      const sanitized = sanitizeSearch(debouncedQ);
       if (!sanitized) return [];
       const { data } = await supabase
         .from("customers")

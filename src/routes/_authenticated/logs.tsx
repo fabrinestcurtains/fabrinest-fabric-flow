@@ -9,14 +9,13 @@ import {
   RefreshCw,
   Edit3,
   Trash2,
-  ChevronLeft,
-  ChevronRight,
   Search,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase, type ActivityLog } from "@/lib/supabase";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/pagination";
+import { useDebouncedValue } from "@/hooks/use-debounce";
 
 export const Route = createFileRoute("/_authenticated/logs")({
   ssr: false,
@@ -68,30 +67,11 @@ function fmtLogTime(iso: string) {
   return format(d, "dd MMM, hh:mm a");
 }
 
-function buildPageNumbers(current: number, total: number): (number | "…")[] {
-  const show = new Set<number>();
-  show.add(1);
-  if (total >= 2) show.add(2);
-  show.add(total);
-  if (total > 1) show.add(total - 1);
-  show.add(current);
-  if (current > 1) show.add(current - 1);
-  if (current < total) show.add(current + 1);
-
-  const sorted = [...show].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
-  const result: (number | "…")[] = [];
-  for (let i = 0; i < sorted.length; i++) {
-    if (i > 0 && sorted[i]! - sorted[i - 1]! > 1) result.push("…");
-    result.push(sorted[i]!);
-  }
-  return result;
-}
-
 function LogsPage() {
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
-  const [jumpVal, setJumpVal] = useState("");
 
   const logsQ = useQuery({
     queryKey: ["activity-logs"],
@@ -108,7 +88,7 @@ function LogsPage() {
   const allLogs = logsQ.data ?? [];
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = debouncedSearch.toLowerCase().trim();
     return allLogs.filter((l) => {
       const matchType = activeFilter === "all" || l.activity_type === activeFilter;
       const matchSearch =
@@ -118,16 +98,11 @@ function LogsPage() {
         (l.description ?? "").toLowerCase().includes(q);
       return matchType && matchSearch;
     });
-  }, [allLogs, activeFilter, search]);
+  }, [allLogs, activeFilter, debouncedSearch]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const pageItems = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-
-  const goPage = (p: number) => {
-    if (p < 1 || p > totalPages) return;
-    setPage(p);
-  };
 
   const handleFilterChange = (val: string) => {
     setActiveFilter(val);
@@ -137,12 +112,6 @@ function LogsPage() {
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearch(e.target.value);
     setPage(1);
-  };
-
-  const handleJump = () => {
-    const n = parseInt(jumpVal, 10);
-    if (!isNaN(n)) goPage(n);
-    setJumpVal("");
   };
 
   return (
@@ -233,70 +202,12 @@ function LogsPage() {
       </div>
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <span className="text-xs text-muted-foreground">
-            {(safePage - 1) * PAGE_SIZE + 1}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of {filtered.length} ·
-            Page {safePage} of {totalPages}
-          </span>
-
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => goPage(safePage - 1)}
-              disabled={safePage === 1}
-              className="h-7 px-2"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-
-            {buildPageNumbers(safePage, totalPages).map((p, i) =>
-              p === "…" ? (
-                <span key={`gap-${i}`} className="px-1 text-xs text-muted-foreground">
-                  …
-                </span>
-              ) : (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => goPage(p)}
-                  className={`w-7 h-7 text-xs rounded-md border transition-all ${
-                    p === safePage
-                      ? "bg-gold-500 border-gold-500 text-white font-medium"
-                      : "border-gold-200 text-muted-foreground hover:border-gold-400 hover:text-gold-700 bg-white"
-                  }`}
-                >
-                  {p}
-                </button>
-              ),
-            )}
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => goPage(safePage + 1)}
-              disabled={safePage === totalPages}
-              className="h-7 px-2"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">Go to page</span>
-            <input
-              value={jumpVal}
-              onChange={(e) => setJumpVal(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleJump()}
-              className="w-9 h-6 text-center text-xs border border-gold-200 rounded-md outline-none focus:border-gold-400 bg-white text-gold-900"
-            />
-            <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={handleJump}>
-              Go
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pagination
+        page={safePage}
+        total={filtered.length}
+        pageSize={PAGE_SIZE}
+        onChange={setPage}
+      />
     </div>
   );
 }

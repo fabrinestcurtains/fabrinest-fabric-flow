@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { supabase, sanitizeSearch, type Customer, type Order, ACTIVE_ORDERS_FILTER } from "@/lib/supabase";
 import { fmtAED, fmtDate, dueOf, displayPaymentStatus } from "@/lib/format";
 import { OrderStatusBadge, PaymentStatusBadge } from "./status-badges";
+import { useDebouncedValue } from "@/hooks/use-debounce";
 
 export function AdvancedSearchModal({
   open,
@@ -18,6 +19,7 @@ export function AdvancedSearchModal({
   const [tab, setTab] = useState<"order" | "customer">("order");
   const [orderId, setOrderId] = useState("");
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q, 300);
   const navigate = useNavigate();
 
   const orderQ = useQuery({
@@ -30,10 +32,10 @@ export function AdvancedSearchModal({
   });
 
   const custQ = useQuery({
-    queryKey: ["adv-cust", q],
-    enabled: tab === "customer" && q.trim().length >= 2,
+    queryKey: ["adv-cust", debouncedQ],
+    enabled: tab === "customer" && debouncedQ.trim().length >= 2,
     queryFn: async () => {
-      const s = sanitizeSearch(q.trim());
+      const s = sanitizeSearch(debouncedQ.trim());
       if (!s) return [];
       const { data } = await supabase
         .from("customers")

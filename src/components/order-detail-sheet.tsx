@@ -185,7 +185,12 @@ export function OrderDetailSheet({
       `${fmtAED(n)} · ${pType === "refund" ? "Refund" : "Payment recorded"}`,
     );
     resetPaymentForm();
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["orders-list"] });
+    qc.invalidateQueries({ queryKey: ["order", order.id] });
+    qc.invalidateQueries({ queryKey: ["payments", order.id] });
+    qc.invalidateQueries({ queryKey: ["all-time-due"] });
+    qc.invalidateQueries({ queryKey: ["dash-monthly"] });
+    qc.invalidateQueries({ queryKey: ["dash-monthly-v3"] });
   };
 
   const changeOrderStatus = async (v: OrderStatus) => {
@@ -198,7 +203,12 @@ export function OrderDetailSheet({
     });
     toast.success(`Order status updated to ${v}`);
     await logActivity("status_changed", "Order status updated", order.id, `${order.order_status} → ${v}`);
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["orders-list"] });
+    qc.invalidateQueries({ queryKey: ["order", order.id] });
+    qc.invalidateQueries({ queryKey: ["order-history", order.id] });
+    qc.invalidateQueries({ queryKey: ["all-time-due"] });
+    qc.invalidateQueries({ queryKey: ["dash-monthly"] });
+    qc.invalidateQueries({ queryKey: ["dash-monthly-v3"] });
   };
 
   const doDeleteOrder = async () => {
@@ -212,7 +222,12 @@ export function OrderDetailSheet({
     await logActivity("order_deleted", "Order moved to Recycle Bin", order.id, `Order deleted by admin`);
     setDeleteOrderOpen(false);
     onOpenChange(false);
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["orders-list"] });
+    qc.invalidateQueries({ queryKey: ["recycle-bin"] });
+    qc.invalidateQueries({ queryKey: ["recycle-bin-orders"] });
+    qc.invalidateQueries({ queryKey: ["all-time-due"] });
+    qc.invalidateQueries({ queryKey: ["dash-monthly"] });
+    qc.invalidateQueries({ queryKey: ["dash-monthly-v3"] });
   };
 
   const doDeletePayment = async () => {
@@ -234,7 +249,12 @@ export function OrderDetailSheet({
     toast.success("Payment record removed");
     await logActivity("payment_deleted", "Payment record removed", order.id, `${fmtAED(Number(p.amount))} entry deleted`);
     setDeletePayment(null);
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["orders-list"] });
+    qc.invalidateQueries({ queryKey: ["order", order.id] });
+    qc.invalidateQueries({ queryKey: ["payments", order.id] });
+    qc.invalidateQueries({ queryKey: ["all-time-due"] });
+    qc.invalidateQueries({ queryKey: ["dash-monthly"] });
+    qc.invalidateQueries({ queryKey: ["dash-monthly-v3"] });
   };
 
   return (

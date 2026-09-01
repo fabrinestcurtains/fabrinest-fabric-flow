@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { supabase, type Note, type NoteColor } from "@/lib/supabase";
 import { fmtDate } from "@/lib/format";
+import { useDebouncedValue } from "@/hooks/use-debounce";
 
 export const Route = createFileRoute("/_authenticated/notes")({
   ssr: false,
@@ -34,6 +35,7 @@ const cardBg = (c: NoteColor) => COLORS.find((x) => x.value === c)?.bg ?? COLORS
 function NotesPage() {
   const qc = useQueryClient();
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q, 300);
   const [dlg, setDlg] = useState<{ open: boolean; edit?: Note | null }>({ open: false });
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Note | null>(null);
@@ -52,12 +54,12 @@ function NotesPage() {
 
   const filtered = useMemo(() => {
     const all = notesQ.data ?? [];
-    if (!q.trim()) return all;
-    const s = q.trim().toLowerCase();
+    if (!debouncedQ.trim()) return all;
+    const s = debouncedQ.trim().toLowerCase();
     return all.filter(
       (n) => n.title.toLowerCase().includes(s) || (n.content ?? "").toLowerCase().includes(s),
     );
-  }, [notesQ.data, q]);
+  }, [notesQ.data, debouncedQ]);
 
   const pinned = filtered.filter((n) => n.is_pinned);
   const unpinned = filtered.filter((n) => !n.is_pinned);

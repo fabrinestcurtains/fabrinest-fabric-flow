@@ -90,3 +90,11 @@ export function listMonthsSince(startYear = 2025) {
   }
   return arr.reverse();
 }
+
+/**
+ * Returns current date/time adjusted to Dubai timezone (Asia/Dubai, UTC+4).
+ * Note: Server cron jobs in Supabase run in UTC (19:59 UTC = 11:59 PM Dubai).
+ */
+export const getDubaiNow = () => new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Dubai" }));
+export const dubaiNow = getDubaiNow;
+

@@ -46,7 +46,12 @@ export function RecycleBinModal({
       .eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Order restored successfully");
-    qc.invalidateQueries();
+    qc.invalidateQueries({ queryKey: ["orders-list"] });
+    qc.invalidateQueries({ queryKey: ["recycle-bin"] });
+    qc.invalidateQueries({ queryKey: ["recycle-bin-orders"] });
+    qc.invalidateQueries({ queryKey: ["all-time-due"] });
+    qc.invalidateQueries({ queryKey: ["dash-monthly"] });
+    qc.invalidateQueries({ queryKey: ["dash-monthly-v3"] });
   };
 
   return (

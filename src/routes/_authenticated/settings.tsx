@@ -223,7 +223,7 @@ function SettingsPage() {
         <div className="rounded-lg bg-amber-50 border border-amber-100 p-4 space-y-2 text-sm">
           <div className="flex items-center gap-2 text-amber-800 font-medium">
             <span className="text-xs bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full">Auto</span>
-            Daily backup runs every night at 11:59 PM Dubai time
+            Daily backup runs every night at 11:59 PM Dubai time (19:59 UTC) - configured in Supabase cron
           </div>
           <div className="text-xs text-muted-foreground">
             📁 Google Drive → <span className="font-mono">Fabrinest Reports / {new Date().getFullYear()} / {new Date().toLocaleString("en-US", { month: "long" })}</span>

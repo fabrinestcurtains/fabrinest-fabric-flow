@@ -21,6 +21,7 @@ import { Pagination } from "@/components/pagination";
 import { EmptyState } from "@/components/empty-state";
 import { DatePickerField } from "@/components/date-picker-field";
 import { useDebouncedValue } from "@/hooks/use-debounce";
+import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 
 export const Route = createFileRoute("/_authenticated/expenses")({
   ssr: false,
@@ -187,18 +188,24 @@ function ExpensesPage() {
       <div className="bg-white border border-gold-100 rounded-xl p-4">
         <div className="font-semibold text-gold-900 mb-3">Expenses Over Time (7 months)</div>
         <div className="h-56">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chart.data ?? []}>
-              <XAxis dataKey="label" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
-              <Tooltip formatter={(v: number) => fmtAED(v)} cursor={{ fill: "rgba(193,158,101,0.1)" }} />
-              <Bar dataKey="total" radius={[6, 6, 0, 0]}>
-                {(chart.data ?? []).map((entry) => (
-                  <Cell key={entry.key} fill={entry.key === selected ? "#c19e65" : "#e8d0a8"} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <ChartErrorBoundary>
+            {!(chart.data && chart.data.length > 0) ? (
+              <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No expense history available</div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chart.data ?? []}>
+                  <XAxis dataKey="label" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
+                  <Tooltip formatter={(v: number) => fmtAED(v)} cursor={{ fill: "rgba(193,158,101,0.1)" }} />
+                  <Bar dataKey="total" radius={[6, 6, 0, 0]}>
+                    {(chart.data ?? []).map((entry) => (
+                      <Cell key={entry.key} fill={entry.key === selected ? "#c19e65" : "#e8d0a8"} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </ChartErrorBoundary>
         </div>
       </div>
 

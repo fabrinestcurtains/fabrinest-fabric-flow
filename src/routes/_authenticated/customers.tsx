@@ -292,7 +292,8 @@ function CustomerDetail({
                         if (error) return toast.error(error.message);
                         toast.success("Customer updated");
                         setEditingCustomer(false);
-                        qc.invalidateQueries();
+                        qc.invalidateQueries({ queryKey: ["customers-paged"] });
+                        qc.invalidateQueries({ queryKey: ["customer-detail", data.customer.id] });
                       }}
                     >
                       {savingCust ? "Saving…" : "Save Changes"}
