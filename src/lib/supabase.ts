@@ -1,13 +1,17 @@
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL as string;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const FALLBACK_URL = "https://hhonwrvvsnkqlwhysnkx.supabase.co";
+const FALLBACK_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhob253cnZ2c25rcWx3aHlzbmt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNDAyMzUsImV4cCI6MjA5ODgxNjIzNX0.InEzWb99S-tW-gZsHhLUG2_IaJZ_l0SCbIwCFKDwQz8";
+
+const url = (import.meta.env.VITE_SUPABASE_URL as string) || FALLBACK_URL;
+const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || FALLBACK_KEY;
 
 export const supabase = createClient(url, key, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: true,
+    detectSessionInUrl: typeof window !== "undefined",
     storageKey: "fabrinest-auth",
   },
 });
