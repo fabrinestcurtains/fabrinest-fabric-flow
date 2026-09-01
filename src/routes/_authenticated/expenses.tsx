@@ -299,7 +299,7 @@ function ExpenseFormDialog({
   const [description, setDescription] = useState<string | null>("");
   const [busy, setBusy] = useState(false);
 
-  useMemo(() => {
+  useEffect(() => {
     if (open) {
       setTitle(editing?.title ?? "");
       setAmount(editing ? String(editing.amount) : "");

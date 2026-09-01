@@ -1,4 +1,4 @@
-import { format, parseISO } from "date-fns";
+import { format, isValid, parseISO } from "date-fns";
 import type { OrderStatus, PaymentStatus, PaymentStatusDisplay } from "./supabase";
 
 export const fmtAED = (n: number | null | undefined) =>
@@ -12,14 +12,24 @@ export const fmtAEDShort = (n: number) => {
 
 export const fmtDate = (d?: string | Date | null) => {
   if (!d) return "—";
-  const date = typeof d === "string" ? parseISO(d) : d;
-  return format(date, "dd/MM/yyyy");
+  try {
+    const date = typeof d === "string" ? parseISO(d) : d;
+    if (!isValid(date) || isNaN(date.getTime())) return "—";
+    return format(date, "dd/MM/yyyy");
+  } catch {
+    return "—";
+  }
 };
 
 export const fmtDateTime = (d?: string | Date | null) => {
   if (!d) return "—";
-  const date = typeof d === "string" ? parseISO(d) : d;
-  return format(date, "dd/MM/yyyy HH:mm");
+  try {
+    const date = typeof d === "string" ? parseISO(d) : d;
+    if (!isValid(date) || isNaN(date.getTime())) return "—";
+    return format(date, "dd/MM/yyyy HH:mm");
+  } catch {
+    return "—";
+  }
 };
 
 type OrderLike = {

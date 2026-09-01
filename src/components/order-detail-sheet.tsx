@@ -467,10 +467,9 @@ export function OrderDetailSheet({
       <AlertDialog open={deleteOrderOpen} onOpenChange={setDeleteOrderOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Order?</AlertDialogTitle>
+            <AlertDialogTitle>Move to Recycle Bin?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete order #{order?.id} and all associated payment history.
-              This cannot be undone.
+              Move order #{order?.id} to Recycle Bin? You can restore it later from Recycle Bin. Payments will be kept.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -479,7 +478,7 @@ export function OrderDetailSheet({
               onClick={doDeleteOrder}
               className="bg-red-600 hover:bg-red-700 text-white"
             >
-              Delete Order
+              Move to Recycle Bin
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

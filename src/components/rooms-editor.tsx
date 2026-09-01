@@ -157,8 +157,8 @@ export function RoomsEditor({
               <table className="w-full text-xs min-w-[600px]">
                 <thead>
                   <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                    <th className="text-left font-medium pb-1 pr-2">Window Name</th>
-                    <th className="text-left font-medium pb-1 pr-2">Size</th>
+                    <th className="text-left font-medium pb-1 pr-2">Window Name *</th>
+                    <th className="text-left font-medium pb-1 pr-2">Size *</th>
                     <th className="text-left font-medium pb-1 pr-2">Style</th>
                     <th className="text-left font-medium pb-1 pr-2">Fabric</th>
                     <th className="text-left font-medium pb-1 pr-2">Note</th>
@@ -166,22 +166,67 @@ export function RoomsEditor({
                   </tr>
                 </thead>
                 <tbody>
-                  {room.windows.map((w) => (
-                    <tr key={w.id}>
-                      <td className="pr-2 py-1"><Input className="h-8" value={w.wname} onChange={(e) => updateWindow(room.id, w.id, { wname: e.target.value })} placeholder="e.g. Window 1" /></td>
-                      <td className="pr-2 py-1"><Input className="h-8" value={w.size} onChange={(e) => updateWindow(room.id, w.id, { size: e.target.value })} placeholder="3m × 2.5m" /></td>
-                      <td className="pr-2 py-1"><Input className="h-8" value={w.style} onChange={(e) => updateWindow(room.id, w.id, { style: e.target.value })} placeholder="Blackout / Sheer" /></td>
-                      <td className="pr-2 py-1"><Input className="h-8" value={w.fabric} onChange={(e) => updateWindow(room.id, w.id, { fabric: e.target.value })} placeholder="Linen / Velvet" /></td>
-                      <td className="pr-2 py-1"><Input className="h-8" value={w.note} onChange={(e) => updateWindow(room.id, w.id, { note: e.target.value })} placeholder="Optional..." /></td>
-                      <td className="py-1 text-right">
-                        {room.windows.length > 1 && (
-                          <button type="button" onClick={() => deleteWindow(room.id, w.id)} className="p-1 rounded hover:bg-red-50" aria-label="Delete window">
-                            <Trash2 className="w-4 h-4 text-red-500" />
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {room.windows.map((w) => {
+                    const isPartiallyFilled =
+                      Boolean(w.wname?.trim() || w.size?.trim() || w.style?.trim() || w.fabric?.trim() || w.note?.trim()) &&
+                      (!w.wname?.trim() || !w.size?.trim());
+                    return (
+                      <tr key={w.id} className={isPartiallyFilled ? "bg-red-50/50 rounded" : ""}>
+                        <td className="pr-2 py-1">
+                          <Input
+                            className={`h-8 ${isPartiallyFilled && !w.wname?.trim() ? "border-red-400 focus-visible:ring-red-400 bg-red-50/30" : ""}`}
+                            value={w.wname}
+                            onChange={(e) => updateWindow(room.id, w.id, { wname: e.target.value })}
+                            placeholder="e.g. Window 1"
+                          />
+                        </td>
+                        <td className="pr-2 py-1">
+                          <Input
+                            className={`h-8 ${isPartiallyFilled && !w.size?.trim() ? "border-red-400 focus-visible:ring-red-400 bg-red-50/30" : ""}`}
+                            value={w.size}
+                            onChange={(e) => updateWindow(room.id, w.id, { size: e.target.value })}
+                            placeholder="3m × 2.5m"
+                          />
+                        </td>
+                        <td className="pr-2 py-1">
+                          <Input
+                            className="h-8"
+                            value={w.style}
+                            onChange={(e) => updateWindow(room.id, w.id, { style: e.target.value })}
+                            placeholder="Blackout / Sheer"
+                          />
+                        </td>
+                        <td className="pr-2 py-1">
+                          <Input
+                            className="h-8"
+                            value={w.fabric}
+                            onChange={(e) => updateWindow(room.id, w.id, { fabric: e.target.value })}
+                            placeholder="Linen / Velvet"
+                          />
+                        </td>
+                        <td className="pr-2 py-1">
+                          <Input
+                            className="h-8"
+                            value={w.note}
+                            onChange={(e) => updateWindow(room.id, w.id, { note: e.target.value })}
+                            placeholder="Optional..."
+                          />
+                        </td>
+                        <td className="py-1 text-right">
+                          {room.windows.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => deleteWindow(room.id, w.id)}
+                              className="p-1 rounded hover:bg-red-50"
+                              aria-label="Delete window"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

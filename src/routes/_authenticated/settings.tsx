@@ -6,7 +6,7 @@ import { Upload, Sparkles, HardDriveUpload, CheckCircle2, XCircle, Loader2, Exte
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { supabase, SUPABASE_URL, type CompanySettings } from "@/lib/supabase";
+import { supabase, type CompanySettings } from "@/lib/supabase";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   ssr: false,
@@ -31,9 +31,8 @@ function SettingsPage() {
 
   const saveInfo = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!settingsQ.data) return;
     setSavingInfo(true);
-    const { error } = await supabase.from("company_settings").update({
+    const payload = {
       company_name: form.company_name,
       tagline: form.tagline,
       address: form.address,
@@ -41,7 +40,10 @@ function SettingsPage() {
       website: form.website,
       email: form.email,
       updated_at: new Date().toISOString(),
-    }).eq("id", settingsQ.data.id);
+    };
+    const { error } = !settingsQ.data
+      ? await supabase.from("company_settings").insert(payload)
+      : await supabase.from("company_settings").update(payload).eq("id", settingsQ.data.id);
     setSavingInfo(false);
     if (error) return toast.error(error.message);
     toast.success("Company info saved");
@@ -49,16 +51,26 @@ function SettingsPage() {
   };
 
   const uploadLogo = async (file: File) => {
-    if (!settingsQ.data) return;
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop();
+      if (!file.type.startsWith("image/")) throw new Error("Only image files allowed");
+      if (file.size > 2 * 1024 * 1024) throw new Error("Max file size 2MB");
+      if (file.size === 0) throw new Error("Empty file");
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      if (!["jpg", "jpeg", "png", "webp", "svg"].includes(ext || "")) throw new Error("Invalid image format");
+
       const path = `logo-${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("company-logos").upload(path, file, { upsert: true });
       if (upErr) throw upErr;
       const { data: urlData } = supabase.storage.from("company-logos").getPublicUrl(path);
-      const { error: dbErr } = await supabase.from("company_settings").update({ logo_url: urlData.publicUrl }).eq("id", settingsQ.data.id);
-      if (dbErr) throw dbErr;
+
+      if (!settingsQ.data) {
+        const { error: dbErr } = await supabase.from("company_settings").insert({ logo_url: urlData.publicUrl });
+        if (dbErr) throw dbErr;
+      } else {
+        const { error: dbErr } = await supabase.from("company_settings").update({ logo_url: urlData.publicUrl }).eq("id", settingsQ.data.id);
+        if (dbErr) throw dbErr;
+      }
       toast.success("Logo updated");
       qc.invalidateQueries({ queryKey: ["company_settings"] });
     } catch (err: any) {
@@ -102,20 +114,9 @@ function SettingsPage() {
   const runBackupNow = async () => {
     setBackupBusy(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(
-        `${SUPABASE_URL}/functions/v1/drive-backup`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session?.access_token}`,
-          },
-          body: JSON.stringify({}),
-        }
-      );
-      const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.error ?? "Backup failed");
+      const { data, error } = await supabase.functions.invoke("drive-backup", { body: {} });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error ?? "Backup failed");
       toast.success("Backup complete! Files saved to Google Drive.");
       qc.invalidateQueries({ queryKey: ["last-backup-log"] });
     } catch (err: any) {

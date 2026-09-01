@@ -57,12 +57,16 @@ export function OrderForm({
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (editing || orderId) return;
+    if (editing) return;
+    let cancelled = false;
     (async () => {
       const { data, error } = await supabase.rpc("generate_order_id", { p_date: orderDate });
-      if (!error && data) setOrderId(data as string);
+      if (!cancelled && !error && data) setOrderId(data as string);
     })();
-  }, [orderDate, editing, orderId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [orderDate, editing]);
 
   useEffect(() => {
     setPaymentStatus(computePaymentStatus(Number(total) || 0, Number(advance) || 0, Number(discount) || 0));
@@ -101,9 +105,31 @@ export function OrderForm({
    */
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (rooms.length === 0 && !additionalInfo.trim() && !legacyDetails.trim()) {
+
+    const hasEmptyRoom = rooms.some((r) => !r.name?.trim());
+    if (hasEmptyRoom) return toast.error("Room name required");
+
+    const hasEmptyWindow = rooms.some((r) =>
+      r.windows?.some((w) => {
+        const hasAny = Boolean(w.wname?.trim() || w.size?.trim() || w.style?.trim() || w.fabric?.trim() || w.note?.trim());
+        const hasAll = Boolean(w.wname?.trim() && w.size?.trim());
+        return hasAny && !hasAll; // partially filled
+      })
+    );
+    if (hasEmptyWindow) return toast.error("Fill window name and size or remove empty window rows");
+
+    const cleanedRooms = rooms
+      .map((r) => ({
+        ...r,
+        name: r.name.trim(),
+        windows: (r.windows || []).filter((w) => Boolean(w.wname?.trim() || w.size?.trim())),
+      }))
+      .filter((r) => r.windows.length > 0);
+
+    if (cleanedRooms.length === 0 && !additionalInfo.trim() && !legacyDetails.trim()) {
       return toast.error("Please add at least one room or additional info");
     }
+
     const t = Number(total) || 0;
     try {
       let customerId = lockedCustomer?.id ?? "";
@@ -120,7 +146,7 @@ export function OrderForm({
 
       const payload = {
         order_details: editing ? legacyDetails : "",
-        rooms,
+        rooms: cleanedRooms,
         additional_info: additionalInfo || null,
         order_date: orderDate,
         delivery_date: deliveryDate || null,
