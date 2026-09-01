@@ -16,6 +16,14 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+const isSafeRedirect = (r?: string | null): r is string => {
+  if (!r) return false;
+  if (!r.startsWith("/")) return false;
+  if (r.startsWith("//")) return false;
+  if (r.includes("://")) return false;
+  return true;
+};
+
 function AuthPage() {
   const { signIn, user, loading } = useAuth();
   const navigate = useNavigate();
@@ -24,9 +32,11 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const safeRedirect = isSafeRedirect(redirect) ? redirect : "/";
+
   useEffect(() => {
-    if (!loading && user) navigate({ to: (redirect as any) || "/" });
-  }, [user, loading, navigate, redirect]);
+    if (!loading && user) navigate({ to: safeRedirect as any });
+  }, [user, loading, navigate, safeRedirect]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +44,10 @@ function AuthPage() {
     const { error } = await signIn(email, password);
     setBusy(false);
     if (error) toast.error(error);
-    else toast.success("Welcome back!");
+    else {
+      toast.success("Welcome back!");
+      navigate({ to: safeRedirect as any });
+    }
   };
 
   return (

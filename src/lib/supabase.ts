@@ -138,6 +138,10 @@ export const EXPENSE_CATEGORIES = [
 
 export const ACTIVE_ORDERS_FILTER = "is_deleted.is.null,is_deleted.eq.false";
 
+export const sanitizeSearch = (s: string) =>
+  s.replace(/[%_(),]/g, "").trim().slice(0, 50);
+
+
 export type ActivityLog = {
   id: string;
   activity_type: string;

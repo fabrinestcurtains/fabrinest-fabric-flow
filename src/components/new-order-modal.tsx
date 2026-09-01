@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { supabase, type Customer } from "@/lib/supabase";
+import { supabase, sanitizeSearch, type Customer } from "@/lib/supabase";
 import { OrderForm } from "./order-form";
 import { UserPlus, Users } from "lucide-react";
 
@@ -24,10 +24,12 @@ export function NewOrderModal({
     queryKey: ["cust-search", q],
     enabled: step === "existing" && q.length > 0,
     queryFn: async () => {
+      const sanitized = sanitizeSearch(q);
+      if (!sanitized) return [];
       const { data } = await supabase
         .from("customers")
         .select("*")
-        .or(`name.ilike.%${q}%,mobile.ilike.%${q}%`)
+        .or(`name.ilike.%${sanitized}%,mobile.ilike.%${sanitized}%`)
         .limit(20);
       return (data ?? []) as Customer[];
     },

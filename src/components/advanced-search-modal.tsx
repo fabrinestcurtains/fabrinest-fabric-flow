@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { supabase, type Customer, type Order, ACTIVE_ORDERS_FILTER } from "@/lib/supabase";
+import { supabase, sanitizeSearch, type Customer, type Order, ACTIVE_ORDERS_FILTER } from "@/lib/supabase";
 import { fmtAED, fmtDate, dueOf, displayPaymentStatus } from "@/lib/format";
 import { OrderStatusBadge, PaymentStatusBadge } from "./status-badges";
 
@@ -33,7 +33,8 @@ export function AdvancedSearchModal({
     queryKey: ["adv-cust", q],
     enabled: tab === "customer" && q.trim().length >= 2,
     queryFn: async () => {
-      const s = q.trim();
+      const s = sanitizeSearch(q.trim());
+      if (!s) return [];
       const { data } = await supabase
         .from("customers")
         .select("*")

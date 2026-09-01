@@ -8,7 +8,8 @@ export const Route = createFileRoute("/_authenticated")({
     const { supabase } = await import("@/lib/supabase");
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
-      throw redirect({ to: "/auth", search: { redirect: location.href } });
+      const safePath = location.pathname + (location.searchStr || "");
+      throw redirect({ to: "/auth", search: { redirect: safePath } });
     }
   },
   component: Layout,
