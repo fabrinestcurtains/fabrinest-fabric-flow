@@ -12,6 +12,7 @@ import appCss from "../styles.css?url";
 import { AuthProvider } from "../lib/auth";
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+  ssr: false,
   head: () => ({
     meta: [
       { charSet: "utf-8" },
