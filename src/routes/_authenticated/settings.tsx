@@ -6,7 +6,7 @@ import { Upload, Sparkles, HardDriveUpload, CheckCircle2, XCircle, Loader2, Exte
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
-import { supabase, type CompanySettings } from "@/lib/supabase";
+import { supabase, SUPABASE_URL, type CompanySettings } from "@/lib/supabase";
 
 export const Route = createFileRoute("/_authenticated/settings")({
   ssr: false,
@@ -104,7 +104,7 @@ function SettingsPage() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/drive-backup`,
+        `${SUPABASE_URL}/functions/v1/drive-backup`,
         {
           method: "POST",
           headers: {
