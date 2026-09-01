@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/empty-state";
 import { DatePickerField } from "@/components/date-picker-field";
 
 export const Route = createFileRoute("/_authenticated/expenses")({
+  ssr: false,
   component: ExpensesPage,
   validateSearch: (s: Record<string, unknown>) => ({ new: s.new === "1" || s.new === 1 ? "1" : undefined }),
 });
