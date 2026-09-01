@@ -1,6 +1,7 @@
 name = "fabrinest-fabric-flow"
 compatibility_date = "2026-08-31"
 compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "dist/client"
 
 [vars]
 VITE_SUPABASE_URL = "https://hhonwrvvsnkqlwhysnkx.supabase.co"
