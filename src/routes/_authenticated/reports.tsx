@@ -54,10 +54,14 @@ function ReportsPage() {
         supabase.from("orders").select("*").or(ACTIVE_ORDERS_FILTER).gte("order_date", prevStart).lte("order_date", prevEnd),
         supabase.from("expenses").select("amount").gte("expense_date", start).lte("expense_date", end),
         supabase.from("expenses").select("amount").gte("expense_date", prevStart).lte("expense_date", prevEnd),
-        supabase.from("payments").select("amount")
+        supabase.from("payments")
+          .select("amount, orders!inner(is_deleted)")
+          .or(ACTIVE_ORDERS_FILTER, { foreignTable: "orders" })
           .gte("payment_date", start).lte("payment_date", end)
           .eq("payment_type", "payment"),
-        supabase.from("payments").select("amount")
+        supabase.from("payments")
+          .select("amount, orders!inner(is_deleted)")
+          .or(ACTIVE_ORDERS_FILTER, { foreignTable: "orders" })
           .gte("payment_date", prevStart).lte("payment_date", prevEnd)
           .eq("payment_type", "payment"),
       ]);
@@ -75,8 +79,29 @@ function ReportsPage() {
       const c = summarize(cur);
       const p = summarize(prev);
 
-      const collection = (paymentsThisMonth.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
-      const prevCollection = (paymentsPrevMonth.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
+      const curOrderIds = cur.map((o) => o.id);
+      const prevOrderIds = prev.map((o) => o.id);
+      const allOrderIds = [...new Set([...curOrderIds, ...prevOrderIds])];
+
+      let paidOrderIds = new Set<string>();
+      if (allOrderIds.length > 0) {
+        const { data: paymentsForOrders } = await supabase
+          .from("payments")
+          .select("order_id")
+          .in("order_id", allOrderIds)
+          .eq("payment_type", "payment");
+        paidOrderIds = new Set((paymentsForOrders ?? []).map((p: any) => p.order_id));
+      }
+
+      const curAdvanceWithoutPayment = cur
+        .filter((o) => !paidOrderIds.has(o.id) && o.order_status !== "Cancelled")
+        .reduce((s, o) => s + (Number(o.advance_amount) || 0), 0);
+      const prevAdvanceWithoutPayment = prev
+        .filter((o) => !paidOrderIds.has(o.id) && o.order_status !== "Cancelled")
+        .reduce((s, o) => s + (Number(o.advance_amount) || 0), 0);
+
+      const collection = (paymentsThisMonth.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0) + curAdvanceWithoutPayment;
+      const prevCollection = (paymentsPrevMonth.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0) + prevAdvanceWithoutPayment;
 
       const expenses = (curExp.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
       const prevExpenses = (prevExp.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
@@ -130,10 +155,26 @@ function ReportsPage() {
       const yStart = `${y}-01-01`;
       const yEnd = `${y}-12-31`;
       const [ordersRes, expensesRes, paymentsRes] = await Promise.all([
-        supabase.from("orders").select("id, order_date, total_amount, order_status").or(ACTIVE_ORDERS_FILTER).gte("order_date", yStart).lte("order_date", yEnd),
+        supabase.from("orders").select("id, order_date, total_amount, advance_amount, order_status").or(ACTIVE_ORDERS_FILTER).gte("order_date", yStart).lte("order_date", yEnd),
         supabase.from("expenses").select("expense_date, amount").gte("expense_date", yStart).lte("expense_date", yEnd),
-        supabase.from("payments").select("payment_date, amount, payment_type").gte("payment_date", yStart).lte("payment_date", yEnd).eq("payment_type", "payment"),
+        supabase.from("payments")
+          .select("payment_date, amount, payment_type, orders!inner(is_deleted)")
+          .or(ACTIVE_ORDERS_FILTER, { foreignTable: "orders" })
+          .gte("payment_date", yStart).lte("payment_date", yEnd)
+          .eq("payment_type", "payment"),
       ]);
+
+      const yearOrderIds = (ordersRes.data ?? []).map((o: any) => o.id);
+      let paidYearOrderIds = new Set<string>();
+      if (yearOrderIds.length > 0) {
+        const { data: paymentsForYearOrders } = await supabase
+          .from("payments")
+          .select("order_id")
+          .in("order_id", yearOrderIds)
+          .eq("payment_type", "payment");
+        paidYearOrderIds = new Set((paymentsForYearOrders ?? []).map((p: any) => p.order_id));
+      }
+
       const months12 = Array.from({ length: 12 }, (_, i) => ({
         i, label: format(new Date(y, i, 1), "MMM"),
         orders: 0, sales: 0, collection: 0, expenses: 0,
@@ -143,6 +184,9 @@ function ReportsPage() {
         months12[idx].orders += 1;
         if (o.order_status !== "Cancelled") {
           months12[idx].sales += Number(o.total_amount);
+          if (!paidYearOrderIds.has(o.id)) {
+            months12[idx].collection += Number(o.advance_amount) || 0;
+          }
         }
       });
 

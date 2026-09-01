@@ -54,6 +54,29 @@ function CustomersPage() {
         custQuery = custQuery.or(`name.ilike.%${s}%,mobile.ilike.%${s}%`);
       }
 
+      if (filter === "Due") {
+        const { data: dueOrders, error: orderErr } = await supabase
+          .from("orders")
+          .select("customer_id, total_amount, advance_amount, discount_amount, order_status")
+          .or(ACTIVE_ORDERS_FILTER)
+          .neq("order_status", "Cancelled");
+        if (orderErr) throw orderErr;
+
+        const dueCustIds = [
+          ...new Set(
+            (dueOrders ?? [])
+              .filter((o) => dueOf(o as any) > 0)
+              .map((o) => o.customer_id)
+          ),
+        ];
+
+        if (dueCustIds.length === 0) {
+          return { rows: [] as Row[], total: 0 };
+        }
+
+        custQuery = custQuery.in("id", dueCustIds);
+      }
+
       custQuery = custQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
       const { data: customers, count, error } = await custQuery;
       if (error) throw error;
@@ -85,17 +108,17 @@ function CustomersPage() {
         } as Row;
       });
 
-      if (filter !== "All") {
+      if (filter !== "All" && filter !== "Due") {
         rows = rows.filter((r) => {
-          if (filter === "Due") return r.total_due > 0;
           const status = r.last_order?.order_status;
           if (!status) return false;
           if (filter === "Ongoing") return ONGOING_STATUSES.includes(status);
           return status === filter;
         });
-        if (filter === "Due") {
-          rows = [...rows].sort((a, b) => b.total_due - a.total_due);
-        }
+      }
+
+      if (filter === "Due") {
+        rows = [...rows].sort((a, b) => b.total_due - a.total_due);
       }
 
       return { rows, total: count ?? 0 };
