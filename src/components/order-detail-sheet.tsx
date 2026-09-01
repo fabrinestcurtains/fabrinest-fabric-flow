@@ -98,10 +98,34 @@ export function OrderDetailSheet({
     setAddingPayment(false);
   };
 
+  /**
+   * Supabase RPC function for atomic payments:
+   * create or replace function public.add_payment_atomic(p_order_id text, p_amount numeric, p_date date, p_type text, p_note text default null)
+   * returns void language plpgsql security definer as $$
+   * declare cur_adv numeric; cur_total numeric; cur_disc numeric; new_adv numeric; net_amt numeric; new_status text;
+   * begin
+   *   select coalesce(advance_amount, 0), coalesce(total_amount, 0), coalesce(discount_amount, 0)
+   *     into cur_adv, cur_total, cur_disc from orders where id=p_order_id for update;
+   *   if not found then raise exception 'Order % not found', p_order_id; end if;
+   *   if p_type='refund' then
+   *     if p_amount > cur_adv then raise exception 'Refund exceeds paid'; end if;
+   *     new_adv := cur_adv - p_amount;
+   *   else
+   *     new_adv := cur_adv + p_amount;
+   *   end if;
+   *   net_amt := greatest(0, cur_total - cur_disc);
+   *   if new_adv <= 0 then new_status := 'Unpaid';
+   *   elsif new_adv >= net_amt then new_status := 'Full Paid';
+   *   else new_status := 'Partial Paid';
+   *   end if;
+   *   insert into payments(order_id, amount, payment_date, payment_type, note) values(p_order_id, p_amount, p_date, p_type, p_note);
+   *   update orders set advance_amount=new_adv, payment_status=new_status, updated_at=now() where id=p_order_id;
+   * end; $$;
+   */
   const addPayment = async () => {
     if (!order) return;
     const n = Number(amt);
-    if (!n || n <= 0) return toast.error("Enter a valid amount");
+    if (!amt || isNaN(n) || n <= 0) return toast.error("Enter a valid amount (> 0)");
 
     let newAdv: number;
     if (pType === "refund") {
@@ -110,23 +134,49 @@ export function OrderDetailSheet({
       }
       newAdv = Math.max(0, Number(order.advance_amount) - n);
     } else {
+      const remainingDue = dueOf(order);
+      if (n > remainingDue) {
+        return toast.error(`Payment cannot exceed remaining due (${fmtAED(remainingDue)})`);
+      }
       newAdv = Number(order.advance_amount) + n;
     }
 
     const status = computePaymentStatus(order.total_amount, newAdv, order.discount_amount);
-    const { error: pErr } = await supabase.from("payments").insert({
-      order_id: order.id,
-      amount: n,
-      payment_date: pdate,
-      payment_type: pType,
-      note: note || null,
-    });
-    if (pErr) return toast.error(pErr.message);
-    const { error: oErr } = await supabase
-      .from("orders")
-      .update({ advance_amount: newAdv, payment_status: status })
-      .eq("id", order.id);
-    if (oErr) return toast.error(oErr.message);
+    let atomicSuccess = false;
+
+    try {
+      const { error: rpcErr } = await supabase.rpc("add_payment_atomic", {
+        p_order_id: order.id,
+        p_amount: n,
+        p_date: pdate,
+        p_type: pType,
+        p_note: note || null,
+      });
+      if (!rpcErr) {
+        atomicSuccess = true;
+      } else if (rpcErr.message?.includes("Refund exceeds") || rpcErr.code === "P0001") {
+        return toast.error(rpcErr.message);
+      }
+    } catch {
+      // Fallback below if RPC does not exist
+    }
+
+    if (!atomicSuccess) {
+      const { error: pErr } = await supabase.from("payments").insert({
+        order_id: order.id,
+        amount: n,
+        payment_date: pdate,
+        payment_type: pType,
+        note: note || null,
+      });
+      if (pErr) return toast.error(pErr.message);
+      const { error: oErr } = await supabase
+        .from("orders")
+        .update({ advance_amount: newAdv, payment_status: status })
+        .eq("id", order.id);
+      if (oErr) return toast.error(oErr.message);
+    }
+
     toast.success(pType === "refund" ? "Refund recorded" : "Payment added");
     await logActivity(
       "payment_added",

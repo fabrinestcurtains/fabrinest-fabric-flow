@@ -1,5 +1,5 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import { Search, Users, ArrowDownLeft, ArrowUpRight, GitBranch, Pencil } from "lucide-react";
@@ -8,13 +8,14 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { supabase, type Customer, type Order, type Payment, type OrderStatusHistory, ACTIVE_ORDERS_FILTER } from "@/lib/supabase";
+import { supabase, type Customer, type Order, type Payment, type OrderStatusHistory, ACTIVE_ORDERS_FILTER, sanitizeSearch } from "@/lib/supabase";
 import { fmtAED, fmtDate, fmtDateTime, dueOf, ONGOING_STATUSES, isOngoing } from "@/lib/format";
 import { OrderStatusBadge } from "@/components/status-badges";
 import { RoomsDisplay } from "@/components/rooms-editor";
 import { EmptyState } from "@/components/empty-state";
 import { Pagination } from "@/components/pagination";
 import { OrderForm } from "@/components/order-form";
+import { useDebouncedValue } from "@/hooks/use-debounce";
 
 const search = z.object({ open: z.string().optional() });
 
@@ -31,6 +32,7 @@ type Row = Customer & { last_order?: Order | null; order_count: number; total_du
 function CustomersPage() {
   const routeSearch = useSearch({ from: "/_authenticated/customers" });
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q, 300);
   const [filter, setFilter] = useState<Filter>("All");
   const [page, setPage] = useState(1);
   const [openId, setOpenId] = useState<string | null>(routeSearch.open ?? null);
@@ -40,22 +42,40 @@ function CustomersPage() {
   }, [routeSearch.open]);
 
   const query = useQuery({
-    queryKey: ["customers-with-orders"],
+    queryKey: ["customers-paged", debouncedQ, filter, page],
     queryFn: async () => {
-      const { data: customers } = await supabase
+      let custQuery = supabase
         .from("customers")
-        .select("*")
+        .select("*", { count: "exact" })
         .order("created_at", { ascending: false });
+
+      const s = sanitizeSearch(debouncedQ);
+      if (s) {
+        custQuery = custQuery.or(`name.ilike.%${s}%,mobile.ilike.%${s}%`);
+      }
+
+      custQuery = custQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+      const { data: customers, count, error } = await custQuery;
+      if (error) throw error;
+
+      const custIds = (customers ?? []).map((c) => c.id);
+      if (!custIds.length) {
+        return { rows: [] as Row[], total: count ?? 0 };
+      }
+
       const { data: orders } = await supabase
         .from("orders")
         .select("*")
         .or(ACTIVE_ORDERS_FILTER)
+        .in("customer_id", custIds)
         .order("created_at", { ascending: false });
+
       const byCust: Record<string, Order[]> = {};
       (orders ?? []).forEach((o) => {
         (byCust[o.customer_id] ??= []).push(o as Order);
       });
-      return (customers ?? []).map((c) => {
+
+      let rows = (customers ?? []).map((c) => {
         const list = byCust[c.id] ?? [];
         return {
           ...(c as Customer),
@@ -64,32 +84,28 @@ function CustomersPage() {
           total_due: list.reduce((s, o) => s + dueOf(o), 0),
         } as Row;
       });
+
+      if (filter !== "All") {
+        rows = rows.filter((r) => {
+          if (filter === "Due") return r.total_due > 0;
+          const status = r.last_order?.order_status;
+          if (!status) return false;
+          if (filter === "Ongoing") return ONGOING_STATUSES.includes(status);
+          return status === filter;
+        });
+        if (filter === "Due") {
+          rows = [...rows].sort((a, b) => b.total_due - a.total_due);
+        }
+      }
+
+      return { rows, total: count ?? 0 };
     },
   });
 
-  const filtered = useMemo(() => {
-    let rows = query.data ?? [];
-    if (filter !== "All") {
-      rows = rows.filter((r) => {
-        if (filter === "Due") return r.total_due > 0;
-        const s = r.last_order?.order_status;
-        if (!s) return false;
-        if (filter === "Ongoing") return ONGOING_STATUSES.includes(s);
-        return s === filter;
-      });
-      if (filter === "Due") {
-        rows = [...rows].sort((a, b) => b.total_due - a.total_due);
-      }
-    }
-    if (q.trim()) {
-      const s = q.trim().toLowerCase();
-      rows = rows.filter((r) => r.name.toLowerCase().includes(s) || r.mobile.toLowerCase().includes(s));
-    }
-    return rows;
-  }, [query.data, q, filter]);
+  const total = query.data?.total ?? 0;
+  const paged = query.data?.rows ?? [];
 
-  useEffect(() => setPage(1), [q, filter]);
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => setPage(1), [debouncedQ, filter]);
 
   return (
     <div className="space-y-4">
@@ -121,7 +137,7 @@ function CustomersPage() {
             <div key={i} className="h-16 rounded-lg bg-white border border-gold-100 animate-pulse" />
           ))}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : total === 0 ? (
         <div className="bg-white rounded-xl border border-gold-100">
           <EmptyState icon={<Users className="w-10 h-10" />} title="No customers found" />
         </div>
@@ -151,7 +167,7 @@ function CustomersPage() {
               </button>
             ))}
           </div>
-          <Pagination page={page} total={filtered.length} pageSize={PAGE_SIZE} onChange={setPage} />
+          <Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} />
         </>
       )}
 

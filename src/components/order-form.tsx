@@ -75,13 +75,36 @@ export function OrderForm({
     order_status: orderStatus,
   });
 
+  /**
+   * Supabase RPC function for atomic payments:
+   * create or replace function public.add_payment_atomic(p_order_id text, p_amount numeric, p_date date, p_type text, p_note text default null)
+   * returns void language plpgsql security definer as $$
+   * declare cur_adv numeric; cur_total numeric; cur_disc numeric; new_adv numeric; net_amt numeric; new_status text;
+   * begin
+   *   select coalesce(advance_amount, 0), coalesce(total_amount, 0), coalesce(discount_amount, 0)
+   *     into cur_adv, cur_total, cur_disc from orders where id=p_order_id for update;
+   *   if not found then raise exception 'Order % not found', p_order_id; end if;
+   *   if p_type='refund' then
+   *     if p_amount > cur_adv then raise exception 'Refund exceeds paid'; end if;
+   *     new_adv := cur_adv - p_amount;
+   *   else
+   *     new_adv := cur_adv + p_amount;
+   *   end if;
+   *   net_amt := greatest(0, cur_total - cur_disc);
+   *   if new_adv <= 0 then new_status := 'Unpaid';
+   *   elsif new_adv >= net_amt then new_status := 'Full Paid';
+   *   else new_status := 'Partial Paid';
+   *   end if;
+   *   insert into payments(order_id, amount, payment_date, payment_type, note) values(p_order_id, p_amount, p_date, p_type, p_note);
+   *   update orders set advance_amount=new_adv, payment_status=new_status, updated_at=now() where id=p_order_id;
+   * end; $$;
+   */
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (rooms.length === 0 && !additionalInfo.trim() && !legacyDetails.trim()) {
       return toast.error("Please add at least one room or additional info");
     }
-    if (!total || Number(total) <= 0) return toast.error("Total amount is required");
-    setBusy(true);
+    const t = Number(total) || 0;
     try {
       let customerId = lockedCustomer?.id ?? "";
       if (mode.kind === "new-customer") {
@@ -126,6 +149,8 @@ export function OrderForm({
           id,
           customer_id: customerId,
           ...payload,
+          advance_amount: 0,
+          payment_status: "Unpaid",
         });
         if (error) throw error;
         // seed timeline
@@ -135,13 +160,36 @@ export function OrderForm({
           note: "Order created",
         });
         if (Number(advance) > 0) {
-          await supabase.from("payments").insert({
-            order_id: id,
-            amount: Number(advance),
-            payment_date: orderDate,
-            payment_type: "payment",
-            note: "Initial advance",
-          });
+          let atomicSuccess = false;
+          try {
+            const { error: rpcErr } = await supabase.rpc("add_payment_atomic", {
+              p_order_id: id,
+              p_amount: Number(advance),
+              p_date: orderDate,
+              p_type: "payment",
+              p_note: "Initial advance",
+            });
+            if (!rpcErr) {
+              atomicSuccess = true;
+            }
+          } catch {
+            // RPC function may not exist yet, fallback below
+          }
+
+          if (!atomicSuccess) {
+            // Fallback: non-atomic payment insert + order update
+            await supabase.from("payments").insert({
+              order_id: id,
+              amount: Number(advance),
+              payment_date: orderDate,
+              payment_type: "payment",
+              note: "Initial advance",
+            });
+            await supabase.from("orders").update({
+              advance_amount: Number(advance),
+              payment_status: paymentStatus,
+            }).eq("id", id);
+          }
         }
         toast.success("Order created");
         await logActivity(

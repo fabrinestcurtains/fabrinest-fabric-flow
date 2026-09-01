@@ -37,21 +37,19 @@ function Dashboard() {
   const monthly = useQuery({
     queryKey: ["dash-monthly-v3", start, end],
     queryFn: async () => {
-      const [cur, prev, curExp, prevExp, crossPayments, prevCrossPayments] = await Promise.all([
+      const [cur, prev, curExp, prevExp, paymentsThisMonth, paymentsPrevMonth] = await Promise.all([
         supabase.from("orders").select("*").or(ACTIVE_ORDERS_FILTER).gte("order_date", start).lte("order_date", end),
         supabase.from("orders").select("*").or(ACTIVE_ORDERS_FILTER).gte("order_date", pStart).lte("order_date", pEnd),
         supabase.from("expenses").select("amount").gte("expense_date", start).lte("expense_date", end),
         supabase.from("expenses").select("amount").gte("expense_date", pStart).lte("expense_date", pEnd),
         supabase.from("payments")
-          .select("amount, payment_type, orders!inner(order_date)")
-          .gte("payment_date", start).lte("payment_date", end)
+          .select("amount")
           .eq("payment_type", "payment")
-          .lt("orders.order_date", start),
+          .gte("payment_date", start).lte("payment_date", end),
         supabase.from("payments")
-          .select("amount, payment_type, orders!inner(order_date)")
-          .gte("payment_date", pStart).lte("payment_date", pEnd)
+          .select("amount")
           .eq("payment_type", "payment")
-          .lt("orders.order_date", pStart),
+          .gte("payment_date", pStart).lte("payment_date", pEnd),
       ]);
       const sum = (rows: any[]) => {
         const total = rows.length;
@@ -59,23 +57,20 @@ function Dashboard() {
         const completed = rows.filter((r) => r.order_status === "Completed").length;
         const cancelled = rows.filter((r) => r.order_status === "Cancelled").length;
         const sales = rows.filter((r) => r.order_status !== "Cancelled").reduce((s, r) => s + Number(r.total_amount), 0);
-        const collection = rows.filter((r) => r.order_status !== "Cancelled").reduce((s, r) => s + Number(r.advance_amount), 0);
         const due = rows.reduce((s, r) => s + dueOf(r), 0);
-        return { total, ongoing, completed, cancelled, sales, collection, due };
+        return { total, ongoing, completed, cancelled, sales, due };
       };
       const c = sum((cur.data ?? []) as Order[]);
       const p = sum((prev.data ?? []) as Order[]);
-      const extraCollection = (crossPayments.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
-      const prevExtraCollection = (prevCrossPayments.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
-      const correctedCollection = c.collection + extraCollection;
-      const prevCorrectedCollection = p.collection + prevExtraCollection;
+      const collection = (paymentsThisMonth.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
+      const prevCollection = (paymentsPrevMonth.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
       const expenses = (curExp.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
       const prevExpenses = (prevExp.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
       return {
-        ...c, collection: correctedCollection, expenses, prevExpenses,
+        ...c, collection, expenses, prevExpenses,
         chg: {
           sales: pct(c.sales, p.sales),
-          collection: pct(correctedCollection, prevCorrectedCollection),
+          collection: pct(collection, prevCollection),
           expenses: pct(expenses, prevExpenses),
         },
       };
@@ -122,7 +117,7 @@ function Dashboard() {
       const yStart = format(startOfYear(now), "yyyy-MM-dd");
       const yEnd = format(endOfYear(now), "yyyy-MM-dd");
       const [ordersRes, expensesRes, paymentsRes] = await Promise.all([
-        supabase.from("orders").select("order_date, total_amount, advance_amount, order_status").or(ACTIVE_ORDERS_FILTER).gte("order_date", yStart).lte("order_date", yEnd),
+        supabase.from("orders").select("order_date, total_amount, order_status").or(ACTIVE_ORDERS_FILTER).gte("order_date", yStart).lte("order_date", yEnd),
         supabase.from("expenses").select("expense_date, amount").gte("expense_date", yStart).lte("expense_date", yEnd),
         supabase.from("payments").select("payment_date, amount, payment_type").gte("payment_date", yStart).lte("payment_date", yEnd).eq("payment_type", "payment"),
       ]);
@@ -134,7 +129,6 @@ function Dashboard() {
         if (o.order_status === "Cancelled") return;
         const idx = new Date(o.order_date).getMonth();
         months[idx].sales += Number(o.total_amount);
-        months[idx].collection += Number(o.advance_amount);
       });
       (paymentsRes.data ?? []).forEach((p: any) => {
         const idx = new Date(p.payment_date).getMonth();

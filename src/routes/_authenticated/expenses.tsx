@@ -15,11 +15,12 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { supabase, logActivity, EXPENSE_CATEGORIES, type Expense } from "@/lib/supabase";
+import { supabase, logActivity, EXPENSE_CATEGORIES, type Expense, sanitizeSearch } from "@/lib/supabase";
 import { fmtAED, fmtAEDShort, fmtDate, listMonthsSince, monthKey } from "@/lib/format";
 import { Pagination } from "@/components/pagination";
 import { EmptyState } from "@/components/empty-state";
 import { DatePickerField } from "@/components/date-picker-field";
+import { useDebouncedValue } from "@/hooks/use-debounce";
 
 export const Route = createFileRoute("/_authenticated/expenses")({
   ssr: false,
@@ -36,10 +37,11 @@ function ExpensesPage() {
   const months = useMemo(() => listMonthsSince(2025), []);
   const [selected, setSelected] = useState(monthKey(new Date()));
   const selectedDate = months.find((m) => m.value === selected)!.date;
-const monthStart = format(startOfMonth(selectedDate), "yyyy-MM-dd");
-const monthEnd = format(endOfMonth(selectedDate), "yyyy-MM-dd");
+  const monthStart = format(startOfMonth(selectedDate), "yyyy-MM-dd");
+  const monthEnd = format(endOfMonth(selectedDate), "yyyy-MM-dd");
 
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q, 300);
   const [page, setPage] = useState(1);
   const [dlg, setDlg] = useState<{ open: boolean; edit?: Expense | null }>({ open: false });
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -51,22 +53,29 @@ const monthEnd = format(endOfMonth(selectedDate), "yyyy-MM-dd");
     }
   }, [search.new, nav]);
 
-  const monthQ = useQuery({
-    queryKey: ["expenses-month", selected],
+  const monthSummaryQ = useQuery({
+    queryKey: ["expenses-month-summary", selected],
     queryFn: async () => {
-      const { data } = await supabase.from("expenses").select("*").gte("expense_date", monthStart).lte("expense_date", monthEnd).order("expense_date", { ascending: false });
-      return (data ?? []) as Expense[];
+      const { data } = await supabase
+        .from("expenses")
+        .select("amount, expense_date")
+        .gte("expense_date", monthStart)
+        .lte("expense_date", monthEnd);
+      return (data ?? []) as { amount: number; expense_date: string }[];
     },
   });
 
   const todayISO = format(new Date(), "yyyy-MM-dd");
   const isCurrent = selected === monthKey(new Date());
-  const todayTotal = isCurrent ? (monthQ.data ?? []).filter((e) => e.expense_date === todayISO).reduce((s, e) => s + Number(e.amount), 0) : null;
-  const monthTotal = (monthQ.data ?? []).reduce((s, e) => s + Number(e.amount), 0);
+  const todayTotal = isCurrent
+    ? (monthSummaryQ.data ?? []).filter((e) => e.expense_date === todayISO).reduce((s, e) => s + Number(e.amount), 0)
+    : null;
+  const monthTotal = (monthSummaryQ.data ?? []).reduce((s, e) => s + Number(e.amount), 0);
+  const monthCount = (monthSummaryQ.data ?? []).length;
 
   const prevDate = subMonths(selectedDate, 1);
-const prevStart = format(startOfMonth(prevDate), "yyyy-MM-dd");
-const prevEnd = format(endOfMonth(prevDate), "yyyy-MM-dd");
+  const prevStart = format(startOfMonth(prevDate), "yyyy-MM-dd");
+  const prevEnd = format(endOfMonth(prevDate), "yyyy-MM-dd");
   const prevQ = useQuery({
     queryKey: ["expenses-prev", monthKey(prevDate)],
     queryFn: async () => {
@@ -83,8 +92,8 @@ const prevEnd = format(endOfMonth(prevDate), "yyyy-MM-dd");
         const d = subMonths(selectedDate, i);
         months7.push({ key: monthKey(d), label: format(d, "MMM"), total: 0, date: d });
       }
-const start = format(startOfMonth(months7[0].date), "yyyy-MM-dd");
-const end = format(endOfMonth(months7[6].date), "yyyy-MM-dd");
+      const start = format(startOfMonth(months7[0].date), "yyyy-MM-dd");
+      const end = format(endOfMonth(months7[6].date), "yyyy-MM-dd");
       const { data } = await supabase.from("expenses").select("amount, expense_date").gte("expense_date", start).lte("expense_date", end);
       (data ?? []).forEach((e: any) => {
         const k = e.expense_date.slice(0, 7);
@@ -96,19 +105,37 @@ const end = format(endOfMonth(months7[6].date), "yyyy-MM-dd");
     },
   });
 
-  const filtered = useMemo(() => {
-    let rows = monthQ.data ?? [];
-    if (q.trim()) {
-      const s = q.trim().toLowerCase();
-      rows = rows.filter((e) => e.title.toLowerCase().includes(s) || e.category.toLowerCase().includes(s));
-    }
-    return rows;
-  }, [monthQ.data, q]);
-  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const expensesListQ = useQuery({
+    queryKey: ["expenses-list-paged", selected, debouncedQ, page],
+    queryFn: async () => {
+      let query = supabase
+        .from("expenses")
+        .select("*", { count: "exact" })
+        .gte("expense_date", monthStart)
+        .lte("expense_date", monthEnd)
+        .order("expense_date", { ascending: false })
+        .order("created_at", { ascending: false });
+
+      const s = sanitizeSearch(debouncedQ);
+      if (s) {
+        query = query.or(`title.ilike.%${s}%,category.ilike.%${s}%`);
+      }
+
+      query = query.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+      const { data, count, error } = await query;
+      if (error) throw error;
+      return { rows: (data ?? []) as Expense[], total: count ?? 0 };
+    },
+  });
+
+  const total = expensesListQ.data?.total ?? 0;
+  const paged = expensesListQ.data?.rows ?? [];
+
+  useEffect(() => setPage(1), [selected, debouncedQ]);
 
   const doDelete = async () => {
     if (!deleteId) return;
-    const expense = (monthQ.data ?? []).find((e) => e.id === deleteId);
+    const expense = paged.find((e) => e.id === deleteId);
     const { error } = await supabase.from("expenses").delete().eq("id", deleteId);
     if (error) toast.error(error.message);
     else {
@@ -123,7 +150,8 @@ const end = format(endOfMonth(months7[6].date), "yyyy-MM-dd");
       );
     }
     setDeleteId(null);
-    qc.invalidateQueries({ queryKey: ["expenses-month"] });
+    qc.invalidateQueries({ queryKey: ["expenses-list-paged"] });
+    qc.invalidateQueries({ queryKey: ["expenses-month-summary"] });
     qc.invalidateQueries({ queryKey: ["expenses-chart"] });
   };
 
@@ -141,7 +169,7 @@ const end = format(endOfMonth(months7[6].date), "yyyy-MM-dd");
       <h2 className="text-lg font-bold text-gold-900">{months.find((m) => m.value === selected)?.label} Expense Overview</h2>
 
       <div className="grid grid-cols-2 gap-3 md:gap-4">
-        <StatCard label="This Month" value={fmtAED(monthTotal)} sub={`${(monthQ.data ?? []).length} expenses`} tone="gold" />
+        <StatCard label="This Month" value={fmtAED(monthTotal)} sub={`${monthCount} expenses`} tone="gold" />
         <StatCard label="Today" value={todayTotal == null ? "—" : fmtAED(todayTotal)} sub={todayTotal == null ? "Past month" : "So far today"} tone="blue" />
         <StatCard label="Last Month" value={fmtAED(prevQ.data ?? 0)} sub={format(prevDate, "MMM yyyy")} tone="muted" />
         <button
@@ -180,9 +208,9 @@ const end = format(endOfMonth(months7[6].date), "yyyy-MM-dd");
       </div>
 
       <div className="bg-white border border-gold-100 rounded-xl">
-        {monthQ.isLoading ? (
+        {expensesListQ.isLoading ? (
           <div className="p-6 text-center text-muted-foreground">Loading…</div>
-        ) : filtered.length === 0 ? (
+        ) : total === 0 ? (
           <EmptyState icon={<Wallet className="w-10 h-10" />} title="No expenses for this month" />
         ) : (
           <>
@@ -215,7 +243,7 @@ const end = format(endOfMonth(months7[6].date), "yyyy-MM-dd");
                 </tbody>
               </table>
             </div>
-            <div className="p-3"><Pagination page={page} total={filtered.length} pageSize={PAGE_SIZE} onChange={setPage} /></div>
+            <div className="p-3"><Pagination page={page} total={total} pageSize={PAGE_SIZE} onChange={setPage} /></div>
           </>
         )}
       </div>

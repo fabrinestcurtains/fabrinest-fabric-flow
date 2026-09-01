@@ -1,11 +1,11 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { z } from "zod";
 import { Search, Plus, ClipboardList, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { supabase, type Order, ACTIVE_ORDERS_FILTER } from "@/lib/supabase";
+import { supabase, type Order, ACTIVE_ORDERS_FILTER, sanitizeSearch } from "@/lib/supabase";
 import { fmtAED, fmtDate, dueOf, ONGOING_STATUSES } from "@/lib/format";
 import { OrderStatusBadge, PaymentStatusBadge, statusBorderClass } from "@/components/status-badges";
 import { Pagination } from "@/components/pagination";
@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/empty-state";
 import { NewOrderModal } from "@/components/new-order-modal";
 import { OrderDetailSheet } from "@/components/order-detail-sheet";
 import { RecycleBinModal } from "@/components/recycle-bin-modal";
+import { useDebouncedValue } from "@/hooks/use-debounce";
 
 type Filter = "All" | "Ongoing" | "Completed" | "Cancelled";
 
@@ -33,50 +34,54 @@ function OrdersPage() {
   const routeSearch = useSearch({ from: "/_authenticated/orders" });
   const [filter, setFilter] = useState<Filter>(routeSearch.status ?? "All");
   const [q, setQ] = useState("");
+  const debouncedQ = useDebouncedValue(q, 300);
   const [page, setPage] = useState(1);
   const [newOpen, setNewOpen] = useState(false);
   const [binOpen, setBinOpen] = useState(false);
   const [openId, setOpenId] = useState<string | null>(routeSearch.open ?? null);
-
-
-
 
   useEffect(() => {
     if (routeSearch.open) setOpenId(routeSearch.open);
   }, [routeSearch.open]);
 
   const orders = useQuery({
-    queryKey: ["orders-list", filter, q],
+    queryKey: ["orders-list", filter, debouncedQ, page],
     queryFn: async () => {
-      let query = supabase
-        .from("orders")
-        .select("*, customers(*)")
-        .or(ACTIVE_ORDERS_FILTER)
-        .order("created_at", { ascending: false });
-      if (filter === "Ongoing") query = query.in("order_status", ONGOING_STATUSES);
-      else if (filter !== "All") query = query.eq("order_status", filter);
-      const { data } = await query;
-      let rows = (data ?? []) as Order[];
-      if (q.trim()) {
-        const s = q.trim().toLowerCase();
-        rows = rows.filter(
-          (o) =>
-            o.id.toLowerCase().includes(s) ||
-            (o.customers?.name ?? "").toLowerCase().includes(s) ||
-            (o.customers?.mobile ?? "").toLowerCase().includes(s),
-        );
+      const s = sanitizeSearch(debouncedQ);
+      let query;
+      if (s) {
+        query = supabase
+          .from("orders")
+          .select("*, customers!inner(*)", { count: "exact" })
+          .or(ACTIVE_ORDERS_FILTER)
+          .or(`id.ilike.%${s}%,customers.name.ilike.%${s}%,customers.mobile.ilike.%${s}%`);
+      } else {
+        query = supabase
+          .from("orders")
+          .select("*, customers(*)", { count: "exact" })
+          .or(ACTIVE_ORDERS_FILTER);
       }
-      return rows;
+
+      if (filter === "Ongoing") {
+        query = query.in("order_status", ONGOING_STATUSES);
+      } else if (filter !== "All") {
+        query = query.eq("order_status", filter);
+      }
+
+      query = query
+        .order("created_at", { ascending: false })
+        .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
+
+      const { data, count, error } = await query;
+      if (error) throw error;
+      return { rows: (data ?? []) as Order[], total: count ?? 0 };
     },
   });
 
-  const total = orders.data?.length ?? 0;
-  const paged = useMemo(() => {
-    const start = (page - 1) * PAGE_SIZE;
-    return (orders.data ?? []).slice(start, start + PAGE_SIZE);
-  }, [orders.data, page]);
+  const total = orders.data?.total ?? 0;
+  const paged = orders.data?.rows ?? [];
 
-  useEffect(() => setPage(1), [filter, q]);
+  useEffect(() => setPage(1), [filter, debouncedQ]);
 
   return (
     <div className="space-y-4">

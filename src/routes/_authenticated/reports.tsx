@@ -48,23 +48,16 @@ function ReportsPage() {
       const [
         thisM, lastM, curExp, prevExp,
         paymentsThisMonth, paymentsPrevMonth,
-        allPaymentsForCurOrders, allPaymentsForPrevOrders,
       ] = await Promise.all([
         supabase.from("orders").select("*, customers(name)").or(ACTIVE_ORDERS_FILTER).gte("order_date", start).lte("order_date", end),
         supabase.from("orders").select("*").or(ACTIVE_ORDERS_FILTER).gte("order_date", prevStart).lte("order_date", prevEnd),
         supabase.from("expenses").select("amount").gte("expense_date", start).lte("expense_date", end),
         supabase.from("expenses").select("amount").gte("expense_date", prevStart).lte("expense_date", prevEnd),
-        supabase.from("payments").select("amount, order_id")
+        supabase.from("payments").select("amount")
           .gte("payment_date", start).lte("payment_date", end)
           .eq("payment_type", "payment"),
-        supabase.from("payments").select("amount, order_id")
+        supabase.from("payments").select("amount")
           .gte("payment_date", prevStart).lte("payment_date", prevEnd)
-          .eq("payment_type", "payment"),
-        supabase.from("payments").select("amount, order_id, orders!inner(order_date)")
-          .gte("orders.order_date", start).lte("orders.order_date", end)
-          .eq("payment_type", "payment"),
-        supabase.from("payments").select("amount, order_id, orders!inner(order_date)")
-          .gte("orders.order_date", prevStart).lte("orders.order_date", prevEnd)
           .eq("payment_type", "payment"),
       ]);
       const cur = (thisM.data ?? []) as Order[];
@@ -75,41 +68,23 @@ function ReportsPage() {
         const completed = rows.filter((o) => o.order_status === "Completed").length;
         const cancelled = rows.filter((o) => o.order_status === "Cancelled").length;
         const sales = rows.filter((o) => o.order_status !== "Cancelled").reduce((s, o) => s + Number(o.total_amount), 0);
-        const collection = rows.filter((o) => o.order_status !== "Cancelled").reduce((s, o) => s + Number(o.advance_amount), 0);
         const due = rows.reduce((s, o) => s + dueOf(o), 0);
-        return { totOrders, ongoing, completed, cancelled, sales, collection, due };
+        return { totOrders, ongoing, completed, cancelled, sales, due };
       };
       const c = summarize(cur);
       const p = summarize(prev);
 
-      const curOrderPaymentMap: Record<string, number> = {};
-      (allPaymentsForCurOrders.data ?? []).forEach((p: any) => {
-        curOrderPaymentMap[p.order_id] = (curOrderPaymentMap[p.order_id] ?? 0) + Number(p.amount);
-      });
-      const curInitialAdvance = cur
-        .filter((o) => o.order_status !== "Cancelled")
-        .reduce((s, o) => s + Math.max(0, Number(o.advance_amount) - (curOrderPaymentMap[o.id] ?? 0)), 0);
-      const curPaymentsTotal = (paymentsThisMonth.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
-      const correctedCollection = curInitialAdvance + curPaymentsTotal;
-
-      const prevOrderPaymentMap: Record<string, number> = {};
-      (allPaymentsForPrevOrders.data ?? []).forEach((p: any) => {
-        prevOrderPaymentMap[p.order_id] = (prevOrderPaymentMap[p.order_id] ?? 0) + Number(p.amount);
-      });
-      const prevInitialAdvance = prev
-        .filter((o) => o.order_status !== "Cancelled")
-        .reduce((s, o) => s + Math.max(0, Number(o.advance_amount) - (prevOrderPaymentMap[o.id] ?? 0)), 0);
-      const prevPaymentsTotal = (paymentsPrevMonth.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
-      const prevCorrectedCollection = prevInitialAdvance + prevPaymentsTotal;
+      const collection = (paymentsThisMonth.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
+      const prevCollection = (paymentsPrevMonth.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
 
       const expenses = (curExp.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
       const prevExpenses = (prevExp.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
       return {
-        rows: cur, ...c, collection: correctedCollection, expenses, prevExpenses,
+        rows: cur, ...c, collection, expenses, prevExpenses,
         chg: {
           totOrders: pct(c.totOrders, p.totOrders),
           sales: pct(c.sales, p.sales),
-          collection: pct(correctedCollection, prevCorrectedCollection),
+          collection: pct(collection, prevCollection),
         },
       };
     },
@@ -153,29 +128,20 @@ function ReportsPage() {
       const y = selectedDate.getFullYear();
       const yStart = `${y}-01-01`;
       const yEnd = `${y}-12-31`;
-      const [ordersRes, expensesRes, paymentsRes, allPaymentsForYearOrders] = await Promise.all([
-        supabase.from("orders").select("id, order_date, total_amount, advance_amount, order_status").or(ACTIVE_ORDERS_FILTER).gte("order_date", yStart).lte("order_date", yEnd),
+      const [ordersRes, expensesRes, paymentsRes] = await Promise.all([
+        supabase.from("orders").select("id, order_date, total_amount, order_status").or(ACTIVE_ORDERS_FILTER).gte("order_date", yStart).lte("order_date", yEnd),
         supabase.from("expenses").select("expense_date, amount").gte("expense_date", yStart).lte("expense_date", yEnd),
         supabase.from("payments").select("payment_date, amount, payment_type").gte("payment_date", yStart).lte("payment_date", yEnd).eq("payment_type", "payment"),
-        supabase.from("payments").select("amount, order_id, orders!inner(order_date)")
-          .gte("orders.order_date", yStart).lte("orders.order_date", yEnd)
-          .eq("payment_type", "payment"),
       ]);
       const months12 = Array.from({ length: 12 }, (_, i) => ({
         i, label: format(new Date(y, i, 1), "MMM"),
         orders: 0, sales: 0, collection: 0, expenses: 0,
       }));
-      const yearOrderPaymentMap: Record<string, number> = {};
-      (allPaymentsForYearOrders.data ?? []).forEach((p: any) => {
-        yearOrderPaymentMap[p.order_id] = (yearOrderPaymentMap[p.order_id] ?? 0) + Number(p.amount);
-      });
       (ordersRes.data ?? []).forEach((o: any) => {
         const idx = new Date(o.order_date).getMonth();
         months12[idx].orders += 1;
         if (o.order_status !== "Cancelled") {
           months12[idx].sales += Number(o.total_amount);
-          const trueInitialAdvance = Math.max(0, Number(o.advance_amount) - (yearOrderPaymentMap[o.id] ?? 0));
-          months12[idx].collection += trueInitialAdvance;
         }
       });
 
