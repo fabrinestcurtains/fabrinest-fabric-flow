@@ -22,6 +22,7 @@ const search = z.object({
 });
 
 export const Route = createFileRoute("/_authenticated/orders")({
+  ssr: false,
   validateSearch: search,
   component: OrdersPage,
 });

@@ -17,6 +17,7 @@ import { supabase, type Note, type NoteColor } from "@/lib/supabase";
 import { fmtDate } from "@/lib/format";
 
 export const Route = createFileRoute("/_authenticated/notes")({
+  ssr: false,
   component: NotesPage,
 });
 

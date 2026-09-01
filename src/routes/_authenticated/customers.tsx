@@ -19,6 +19,7 @@ import { OrderForm } from "@/components/order-form";
 const search = z.object({ open: z.string().optional() });
 
 export const Route = createFileRoute("/_authenticated/customers")({
+  ssr: false,
   validateSearch: search,
   component: CustomersPage,
 });

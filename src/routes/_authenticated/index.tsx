@@ -17,6 +17,7 @@ import { OrderStatusBadge } from "@/components/status-badges";
 import { OrderDetailSheet } from "@/components/order-detail-sheet";
 
 export const Route = createFileRoute("/_authenticated/")({
+  ssr: false,
   component: Dashboard,
 });
 
