@@ -1,12 +1,16 @@
 import { createClient } from "@supabase/supabase-js";
 
-// Single source of truth: the external Supabase project (hhonwrvvsnkqlwhysnkx).
-// Intentionally not read from env, so no other backend URL can be injected.
-export const SUPABASE_URL = "https://hhonwrvvsnkqlwhysnkx.supabase.co";
-export const SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhob253cnZ2c25rcWx3aHlzbmt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNDAyMzUsImV4cCI6MjA5ODgxNjIzNX0.InEzWb99S-tW-gZsHhLUG2_IaJZ_l0SCbIwCFKDwQz8";
+export const SUPABASE_URL =
+  import.meta.env.VITE_SUPABASE_URL ||
+  "https://hhonwrvvsnkqlwhysnkx.supabase.co";
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+export const SUPABASE_PUBLISHABLE_KEY =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  "sb_publishable_9RH18xX3PqabjHHw6T1O_Q_hPprxnq5";
+
+export const SUPABASE_ANON_KEY = SUPABASE_PUBLISHABLE_KEY;
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,

@@ -4,4 +4,5 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 VITE_SUPABASE_URL = "https://hhonwrvvsnkqlwhysnkx.supabase.co"
-VITE_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhob253cnZ2c25rcWx3aHlzbmt4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNDAyMzUsImV4cCI6MjA5ODgxNjIzNX0.InEzWb99S-tW-gZsHhLUG2_IaJZ_l0SCbIwCFKDwQz8"
+VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_9RH18xX3PqabjHHw6T1O_Q_hPprxnq5"
+# Secret key (SUPABASE_SECRET_KEY) should be added as a Cloudflare secret, not in wrangler.toml vars (e.g. npx wrangler secret put SUPABASE_SECRET_KEY)
