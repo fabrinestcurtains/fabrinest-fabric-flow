@@ -214,6 +214,12 @@ function ExpensesPage() {
         <Input placeholder="Search expenses by title or category…" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
 
+      <div className="text-xs text-muted-foreground">
+        {expensesListQ.isLoading
+          ? "Loading expenses…"
+          : `Showing ${paged.length} of ${expensesListQ.data?.total ?? 0} expenses ${debouncedQ ? `for "${debouncedQ}"` : ""}`.trim()}
+      </div>
+
       <div className="bg-white border border-gold-100 rounded-xl">
         {expensesListQ.isLoading ? (
           <div className="p-6 text-center text-muted-foreground">Loading…</div>

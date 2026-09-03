@@ -120,6 +120,12 @@ function OrdersPage() {
         ))}
       </div>
 
+      <div className="text-xs text-muted-foreground">
+        {orders.isLoading
+          ? "Loading orders…"
+          : `Showing ${paged.length} of ${orders.data?.total ?? 0} orders ${filter !== "All" ? `(${filter})` : ""} ${debouncedQ ? `for "${debouncedQ}"` : ""}`.trim()}
+      </div>
+
       {orders.isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (

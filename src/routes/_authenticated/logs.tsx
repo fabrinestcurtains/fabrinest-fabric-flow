@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import {
   ShoppingCart,
   CreditCard,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { supabase, type ActivityLog } from "@/lib/supabase";
+import { getDubaiNow } from "@/lib/format";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/pagination";
 import { useDebouncedValue } from "@/hooks/use-debounce";
@@ -60,11 +61,19 @@ const FALLBACK_CONFIG = TYPE_CONFIG["order_edited"]!;
 
 function fmtLogTime(iso: string) {
   const d = new Date(iso);
-  const now = new Date();
-  const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
-  if (diffDays === 0) return `Today, ${format(d, "hh:mm a")}`;
-  if (diffDays === 1) return `Yesterday, ${format(d, "hh:mm a")}`;
-  return format(d, "dd MMM, hh:mm a");
+  if (isNaN(d.getTime())) return "—";
+  const time = formatInTimeZone(d, "Asia/Dubai", "hh:mm a");
+  const dDateStr = formatInTimeZone(d, "Asia/Dubai", "yyyy-MM-dd");
+  const nowDate = getDubaiNow();
+  const nowDateStr = formatInTimeZone(nowDate, "Asia/Dubai", "yyyy-MM-dd");
+
+  const dDay = new Date(dDateStr).getTime();
+  const nowDay = new Date(nowDateStr).getTime();
+  const diffDays = Math.round((nowDay - dDay) / 86400000);
+
+  if (diffDays === 0) return `Today, ${time} (Dubai)`;
+  if (diffDays === 1) return `Yesterday, ${time} (Dubai)`;
+  return `${formatInTimeZone(d, "Asia/Dubai", "dd MMM, hh:mm a")} (Dubai)`;
 }
 
 function LogsPage() {
@@ -155,10 +164,8 @@ function LogsPage() {
       {/* Results count */}
       <div className="text-xs text-muted-foreground">
         {logsQ.isLoading
-          ? "Loading…"
-          : filtered.length === allLogs.length
-            ? `Showing all ${allLogs.length} activities`
-            : `${filtered.length} result${filtered.length !== 1 ? "s" : ""} found`}
+          ? "Loading activities…"
+          : `Showing ${pageItems.length} of ${filtered.length} activities${activeFilter !== "all" ? ` (${ACTIVITY_TYPES.find((t) => t.value === activeFilter)?.label ?? activeFilter})` : ""}${debouncedSearch ? ` for "${debouncedSearch}"` : ""}`}
       </div>
 
       {/* Log list */}

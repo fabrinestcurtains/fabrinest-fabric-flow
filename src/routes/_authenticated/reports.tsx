@@ -8,7 +8,7 @@ import {
 import { format, startOfMonth, endOfMonth, subMonths, addMonths } from "date-fns";
 import {
   ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, Package, Clock, CheckCircle2,
-  TrendingUp, Wallet, AlertCircle,
+  TrendingUp, Wallet, AlertCircle, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,6 +28,7 @@ const CAT_COLORS = ["#c19e65", "#7c3aed", "#16a34a", "#dc2626", "#0ea5e9", "#f59
 function ReportsPage() {
   const months = useMemo(() => listMonthsSince(2025), []);
   const [selected, setSelected] = useState(monthKey(new Date()));
+  const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
   const selectedDate = months.find((m) => m.value === selected)!.date;
   const monthLabel = months.find((m) => m.value === selected)?.label ?? "";
 
@@ -222,6 +223,7 @@ function ReportsPage() {
   const profitLabel = isLoss ? "Net Loss" : "Net Profit";
 
   const exportPDF = async () => {
+    setExporting("pdf");
     try {
       const jsPDFModule = await import("jspdf");
       const { jsPDF } = jsPDFModule;
@@ -362,10 +364,13 @@ function ReportsPage() {
     } catch (e: any) {
       console.error("PDF export error:", e);
       toast.error("PDF export failed. Please try again.");
+    } finally {
+      setExporting(null);
     }
   };
 
   const exportExcel = async () => {
+    setExporting("excel");
     try {
       const XLSX = await import("xlsx");
       const wb = XLSX.utils.book_new();
@@ -475,6 +480,8 @@ function ReportsPage() {
     } catch (e: any) {
       console.error("Excel export error:", e);
       toast.error("Excel export failed. Please try again.");
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -494,11 +501,28 @@ function ReportsPage() {
           <Button variant="outline" size="icon" onClick={() => shift(1)}><ChevronRight className="w-4 h-4" /></Button>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={exportExcel} className="border-gold-300 text-gold-700 hover:bg-gold-50">
-            <FileSpreadsheet className="w-4 h-4" /> Export Excel
+          <Button
+            variant="outline"
+            onClick={exportExcel}
+            disabled={!!exporting}
+            className="border-gold-300 text-gold-700 hover:bg-gold-50"
+          >
+            {exporting === "excel" ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Exporting...</>
+            ) : (
+              <><FileSpreadsheet className="w-4 h-4 mr-2" /> Export Excel</>
+            )}
           </Button>
-          <Button onClick={exportPDF} className="gold-gradient text-white hover:opacity-90">
-            <FileDown className="w-4 h-4" /> Export PDF
+          <Button
+            onClick={exportPDF}
+            disabled={!!exporting}
+            className="gold-gradient text-white hover:opacity-90"
+          >
+            {exporting === "pdf" ? (
+              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Exporting...</>
+            ) : (
+              <><FileDown className="w-4 h-4 mr-2" /> Export PDF</>
+            )}
           </Button>
         </div>
       </div>
@@ -683,41 +707,46 @@ function ReportsPage() {
           {Object.keys(expensesQ.data?.byCat ?? {}).length === 0 ? (
             <div className="text-sm text-muted-foreground py-4 text-center">No expenses recorded.</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-gold-50 text-[10px] uppercase tracking-wider text-muted-foreground">
-                    <th className="text-left px-3 py-2 font-medium">Category</th>
-                    <th className="text-right px-3 py-2 font-medium">Amount</th>
-                    <th className="text-right px-3 py-2 font-medium">% Share</th>
-                    <th className="text-left px-3 py-2 font-medium w-[35%]">Distribution</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(expensesQ.data!.byCat).sort((a, b) => b[1] - a[1]).map(([cat, amt], i) => {
-                    const p = expensesQ.data!.total ? (amt / expensesQ.data!.total) * 100 : 0;
-                    const color = CAT_COLORS[i % CAT_COLORS.length];
-                    return (
-                      <tr key={cat} className="border-t border-gold-50">
-                        <td className="px-3 py-2 text-gold-900">{cat}</td>
-                        <td className="px-3 py-2 text-right font-medium">{fmtAED(amt)}</td>
-                        <td className="px-3 py-2 text-right text-muted-foreground">{p.toFixed(1)}%</td>
-                        <td className="px-3 py-2">
-                          <div className="h-2 rounded-full bg-gold-50 overflow-hidden">
-                            <div className="h-full rounded-full" style={{ width: `${p}%`, background: color }} />
-                          </div>
-                        </td>
+            <div>
+              <div className="md:hidden text-[10px] text-muted-foreground text-center mb-2">← Swipe to see more →</div>
+              <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+                <div className="min-w-[600px]">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-white z-10">
+                      <tr className="bg-gold-50 text-[10px] uppercase tracking-wider text-muted-foreground">
+                        <th className="text-left px-3 py-2 font-medium">Category</th>
+                        <th className="text-right px-3 py-2 font-medium">Amount</th>
+                        <th className="text-right px-3 py-2 font-medium">% Share</th>
+                        <th className="text-left px-3 py-2 font-medium w-[35%]">Distribution</th>
                       </tr>
-                    );
-                  })}
-                  <tr className="border-t-2 border-gold-200 bg-gold-50/40">
-                    <td className="px-3 py-2 font-bold text-gold-900">TOTAL</td>
-                    <td className="px-3 py-2 text-right font-bold text-gold-700">{fmtAED(expensesQ.data!.total)}</td>
-                    <td className="px-3 py-2 text-right font-bold">100%</td>
-                    <td className="px-3 py-2"></td>
-                  </tr>
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody>
+                      {Object.entries(expensesQ.data!.byCat).sort((a, b) => b[1] - a[1]).map(([cat, amt], i) => {
+                        const p = expensesQ.data!.total ? (amt / expensesQ.data!.total) * 100 : 0;
+                        const color = CAT_COLORS[i % CAT_COLORS.length];
+                        return (
+                          <tr key={cat} className="border-t border-gold-50">
+                            <td className="px-3 py-2 text-gold-900">{cat}</td>
+                            <td className="px-3 py-2 text-right font-medium">{fmtAED(amt)}</td>
+                            <td className="px-3 py-2 text-right text-muted-foreground">{p.toFixed(1)}%</td>
+                            <td className="px-3 py-2">
+                              <div className="h-2 rounded-full bg-gold-50 overflow-hidden">
+                                <div className="h-full rounded-full" style={{ width: `${p}%`, background: color }} />
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      <tr className="border-t-2 border-gold-200 bg-gold-50/40">
+                        <td className="px-3 py-2 font-bold text-gold-900">TOTAL</td>
+                        <td className="px-3 py-2 text-right font-bold text-gold-700">{fmtAED(expensesQ.data!.total)}</td>
+                        <td className="px-3 py-2 text-right font-bold">100%</td>
+                        <td className="px-3 py-2"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
         </div>

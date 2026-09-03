@@ -93,6 +93,10 @@ function Dashboard() {
       const prevExpenses = (prevExp.data ?? []).reduce((s: number, r: any) => s + Number(r.amount), 0);
       return {
         ...c, collection, expenses, prevExpenses,
+        prevTotal: p.total,
+        prevSales: p.sales,
+        prevCollection,
+        prevDue: p.due,
         chg: {
           sales: pct(c.sales, p.sales),
           collection: pct(collection, prevCollection),
@@ -284,12 +288,48 @@ function Dashboard() {
       <div>
         <SectionLabel>{monthLabel.toUpperCase()} — Overview</SectionLabel>
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <StatCard label="Total Orders" value={String(monthly.data?.total ?? 0)} sub="This month" valueColor="text-gold-900" />
-          <StatCard label="Total Sales" value={fmtAED(monthly.data?.sales ?? 0)} sub={chgLabel(monthly.data?.chg.sales)} valueColor="text-gold-700" />
-          <StatCard label="Total Collection" value={fmtAED(monthly.data?.collection ?? 0)} sub={chgLabel(monthly.data?.chg.collection)} valueColor="text-purple-700" />
-          <StatCard label="Monthly Due" value={fmtAED(monthly.data?.due ?? 0)} sub="Pending recovery (this month)" valueColor="text-red-600" />
-
-          <StatCard label="Total Expenses" value={fmtAED(monthly.data?.expenses ?? 0)} sub={monthLabel} valueColor="text-amber-600" />
+          <StatCard
+            label="Total Orders"
+            value={String(monthly.data?.total ?? 0)}
+            sub={
+              (monthly.data?.total ?? 0) === 0
+                ? `No orders yet this month - Last month: ${monthly.data?.prevTotal ?? 0} orders`
+                : "This month"
+            }
+            valueColor="text-gold-900"
+          />
+          <StatCard
+            label="Total Sales"
+            value={fmtAED(monthly.data?.sales ?? 0)}
+            sub={
+              (monthly.data?.sales ?? 0) === 0 && (monthly.data?.prevSales ?? 0) > 0
+                ? `No sales yet - Last month: ${fmtAED(monthly.data?.prevSales ?? 0)}`
+                : chgLabel(monthly.data?.chg.sales)
+            }
+            valueColor="text-gold-700"
+          />
+          <StatCard
+            label="Total Collection"
+            value={fmtAED(monthly.data?.collection ?? 0)}
+            sub={
+              (monthly.data?.collection ?? 0) === 0
+                ? `No collection yet - Last month: ${fmtAED(monthly.data?.prevCollection ?? 0)}`
+                : chgLabel(monthly.data?.chg.collection)
+            }
+            valueColor="text-purple-700"
+          />
+          <StatCard
+            label="Monthly Due"
+            value={fmtAED(monthly.data?.due ?? 0)}
+            sub="Pending recovery (this month)"
+            valueColor="text-red-600"
+          />
+          <StatCard
+            label="Total Expenses"
+            value={fmtAED(monthly.data?.expenses ?? 0)}
+            sub={monthLabel}
+            valueColor="text-amber-600"
+          />
         </div>
       </div>
 
@@ -350,32 +390,35 @@ function Dashboard() {
           </div>
           <Link to="/orders" className="text-sm text-gold-600 hover:text-gold-800">See all →</Link>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gold-50 text-[10px] uppercase tracking-wider text-muted-foreground">
-                <th className="text-left px-4 py-2 font-medium">Order ID</th>
-                <th className="text-left px-4 py-2 font-medium">Customer</th>
-                <th className="text-left px-4 py-2 font-medium">Date</th>
-                <th className="text-right px-4 py-2 font-medium">Amount</th>
-                <th className="text-left px-4 py-2 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(recent.data ?? []).map((o) => (
-                <tr key={o.id} onClick={() => setOrderOpen(o.id)} className="border-t border-gold-50 hover:bg-gold-50/70 cursor-pointer">
-                  <td className="px-4 py-3 font-mono text-gold-700 text-xs">#{o.id}</td>
-                  <td className="px-4 py-3 font-semibold text-gold-900">{(o.customers as any)?.name ?? "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{fmtDate(o.order_date)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-gold-700">{fmtAED(o.total_amount)}</td>
-                  <td className="px-4 py-3"><OrderStatusBadge status={o.order_status} /></td>
+        <div className="md:hidden text-[10px] text-muted-foreground text-center pb-2">← Swipe to see more →</div>
+        <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+          <div className="min-w-[600px]">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white z-10">
+                <tr className="bg-gold-50 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <th className="text-left px-4 py-2 font-medium">Order ID</th>
+                  <th className="text-left px-4 py-2 font-medium">Customer</th>
+                  <th className="text-left px-4 py-2 font-medium">Date</th>
+                  <th className="text-right px-4 py-2 font-medium">Amount</th>
+                  <th className="text-left px-4 py-2 font-medium">Status</th>
                 </tr>
-              ))}
-              {(recent.data ?? []).length === 0 && (
-                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No orders yet.</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(recent.data ?? []).map((o) => (
+                  <tr key={o.id} onClick={() => setOrderOpen(o.id)} className="border-t border-gold-50 hover:bg-gold-50/70 cursor-pointer">
+                    <td className="px-4 py-3 font-mono text-gold-700 text-xs">#{o.id}</td>
+                    <td className="px-4 py-3 font-semibold text-gold-900">{(o.customers as any)?.name ?? "—"}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{fmtDate(o.order_date)}</td>
+                    <td className="px-4 py-3 text-right font-bold text-gold-700">{fmtAED(o.total_amount)}</td>
+                    <td className="px-4 py-3"><OrderStatusBadge status={o.order_status} /></td>
+                  </tr>
+                ))}
+                {(recent.data ?? []).length === 0 && (
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No orders yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 

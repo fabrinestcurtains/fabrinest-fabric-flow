@@ -97,6 +97,14 @@ function NotesPage() {
         </Button>
       </div>
 
+      {hasAny && (
+        <div className="text-xs text-muted-foreground">
+          {notesQ.isLoading
+            ? "Loading notes…"
+            : `Showing ${filtered.length} of ${(notesQ.data ?? []).length} notes ${debouncedQ ? `for "${debouncedQ}"` : ""}`.trim()}
+        </div>
+      )}
+
       {notesQ.isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {Array.from({ length: 6 }).map((_, i) => (

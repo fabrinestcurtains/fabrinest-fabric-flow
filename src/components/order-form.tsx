@@ -79,32 +79,13 @@ export function OrderForm({
     order_status: orderStatus,
   });
 
-  /**
-   * Supabase RPC function for atomic payments:
-   * create or replace function public.add_payment_atomic(p_order_id text, p_amount numeric, p_date date, p_type text, p_note text default null)
-   * returns void language plpgsql security definer as $$
-   * declare cur_adv numeric; cur_total numeric; cur_disc numeric; new_adv numeric; net_amt numeric; new_status text;
-   * begin
-   *   select coalesce(advance_amount, 0), coalesce(total_amount, 0), coalesce(discount_amount, 0)
-   *     into cur_adv, cur_total, cur_disc from orders where id=p_order_id for update;
-   *   if not found then raise exception 'Order % not found', p_order_id; end if;
-   *   if p_type='refund' then
-   *     if p_amount > cur_adv then raise exception 'Refund exceeds paid'; end if;
-   *     new_adv := cur_adv - p_amount;
-   *   else
-   *     new_adv := cur_adv + p_amount;
-   *   end if;
-   *   net_amt := greatest(0, cur_total - cur_disc);
-   *   if new_adv <= 0 then new_status := 'Unpaid';
-   *   elsif new_adv >= net_amt then new_status := 'Full Paid';
-   *   else new_status := 'Partial Paid';
-   *   end if;
-   *   insert into payments(order_id, amount, payment_date, payment_type, note) values(p_order_id, p_amount, p_date, p_type, p_note);
-   *   update orders set advance_amount=new_adv, payment_status=new_status, updated_at=now() where id=p_order_id;
-   * end; $$;
-   */
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (mode.kind === "new-customer") {
+      if (!name.trim()) return toast.error("Customer name is required");
+      if (!mobile.trim()) return toast.error("Mobile number is required");
+    }
 
     const hasEmptyRoom = rooms.some((r) => !r.name?.trim());
     if (hasEmptyRoom) return toast.error("Room name required");
@@ -130,7 +111,33 @@ export function OrderForm({
       return toast.error("Please add at least one room or additional info");
     }
 
-    const t = Number(total) || 0;
+    const totalNum = Number(total);
+    if (isNaN(totalNum) || totalNum <= 0) {
+      return toast.error("Total amount must be greater than 0");
+    }
+
+    const discNum = Number(discount) || 0;
+    if (discNum < 0) {
+      return toast.error("Discount cannot be negative");
+    }
+    if (discNum > totalNum) {
+      return toast.error("Discount cannot exceed total amount");
+    }
+
+    const advNum = Number(advance) || 0;
+    if (advNum < 0) {
+      return toast.error("Advance cannot be negative");
+    }
+    const netPayable = Math.max(0, totalNum - discNum);
+    if (advNum > netPayable) {
+      return toast.error("Advance cannot exceed net amount (Total − Discount)");
+    }
+
+    if (!orderDate) {
+      return toast.error("Order date is required");
+    }
+
+    setBusy(true);
     try {
       let customerId = lockedCustomer?.id ?? "";
       if (mode.kind === "new-customer") {
@@ -150,9 +157,9 @@ export function OrderForm({
         additional_info: additionalInfo || null,
         order_date: orderDate,
         delivery_date: deliveryDate || null,
-        total_amount: Number(total),
-        discount_amount: Number(discount) || 0,
-        advance_amount: Number(advance) || 0,
+        total_amount: totalNum,
+        discount_amount: discNum,
+        advance_amount: advNum,
         salesman_name: salesman || null,
         fixing_man_name: fixingMan || null,
         order_status: orderStatus,
@@ -185,12 +192,12 @@ export function OrderForm({
           status: orderStatus,
           note: "Order created",
         });
-        if (Number(advance) > 0) {
+        if (advNum > 0) {
           let atomicSuccess = false;
           try {
             const { error: rpcErr } = await supabase.rpc("add_payment_atomic", {
               p_order_id: id,
-              p_amount: Number(advance),
+              p_amount: advNum,
               p_date: orderDate,
               p_type: "payment",
               p_note: "Initial advance",
@@ -206,13 +213,13 @@ export function OrderForm({
             // Fallback: non-atomic payment insert + order update
             await supabase.from("payments").insert({
               order_id: id,
-              amount: Number(advance),
+              amount: advNum,
               payment_date: orderDate,
               payment_type: "payment",
               note: "Initial advance",
             });
             await supabase.from("orders").update({
-              advance_amount: Number(advance),
+              advance_amount: advNum,
               payment_status: paymentStatus,
             }).eq("id", id);
           }
@@ -222,13 +229,14 @@ export function OrderForm({
           "order_created",
           "New order created",
           id,
-          `Customer: ${name || lockedCustomer?.name || "existing"} · AED ${Number(total).toLocaleString()}`,
+          `Customer: ${name || lockedCustomer?.name || "existing"} · AED ${totalNum.toLocaleString()}`,
         );
         onDone?.(id);
       }
       qc.invalidateQueries({ queryKey: ["orders-list"] });
       qc.invalidateQueries({ queryKey: ["customers"] });
       qc.invalidateQueries({ queryKey: ["customers-paged"] });
+      qc.invalidateQueries({ queryKey: ["customer-filter-counts"] });
       if (mode.kind === "edit") {
         qc.invalidateQueries({ queryKey: ["order", mode.order.id] });
       }
@@ -293,7 +301,6 @@ export function OrderForm({
           placeholder="Any additional notes, special instructions, or extra details..."
         />
       </div>
-
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>

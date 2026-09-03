@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Upload, Sparkles, HardDriveUpload, CheckCircle2, XCircle, Loader2, ExternalLink } from "lucide-react";
+import { Upload, Sparkles, HardDriveUpload, CheckCircle2, XCircle, Loader2, ExternalLink, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -28,6 +28,49 @@ function SettingsPage() {
 
   const [uploading, setUploading] = useState(false);
   const [savingInfo, setSavingInfo] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  const handleFileSelect = (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast.error("Only image files allowed");
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Max file size 2MB");
+      return;
+    }
+    if (file.size === 0) {
+      toast.error("Empty file");
+      return;
+    }
+    const ext = file.name.split(".").pop()?.toLowerCase();
+    if (!["jpg", "jpeg", "png", "webp", "svg"].includes(ext || "")) {
+      toast.error("Invalid image format (JPG, PNG, WEBP, SVG supported)");
+      return;
+    }
+
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
+    const objUrl = URL.createObjectURL(file);
+    setPreview(objUrl);
+    setSelectedFile(file);
+  };
+
+  const handleRemovePreview = () => {
+    if (preview) {
+      URL.revokeObjectURL(preview);
+    }
+    setPreview(null);
+    setSelectedFile(null);
+  };
 
   const saveInfo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,12 +96,7 @@ function SettingsPage() {
   const uploadLogo = async (file: File) => {
     setUploading(true);
     try {
-      if (!file.type.startsWith("image/")) throw new Error("Only image files allowed");
-      if (file.size > 2 * 1024 * 1024) throw new Error("Max file size 2MB");
-      if (file.size === 0) throw new Error("Empty file");
       const ext = file.name.split(".").pop()?.toLowerCase();
-      if (!["jpg", "jpeg", "png", "webp", "svg"].includes(ext || "")) throw new Error("Invalid image format");
-
       const path = `logo-${Date.now()}.${ext}`;
       const { error: upErr } = await supabase.storage.from("company-logos").upload(path, file, { upsert: true });
       if (upErr) throw upErr;
@@ -72,6 +110,11 @@ function SettingsPage() {
         if (dbErr) throw dbErr;
       }
       toast.success("Logo updated");
+      if (preview) {
+        URL.revokeObjectURL(preview);
+      }
+      setPreview(null);
+      setSelectedFile(null);
       qc.invalidateQueries({ queryKey: ["company_settings"] });
     } catch (err: any) {
       toast.error(err.message || "Upload failed");
@@ -147,25 +190,86 @@ function SettingsPage() {
     <div className="space-y-6 max-w-3xl">
       <section className="bg-white border border-gold-100 rounded-xl p-5">
         <h3 className="font-semibold text-gold-900 mb-3">Company Logo</h3>
-        <label className="block border-2 border-dashed border-gold-200 rounded-lg p-6 text-center cursor-pointer hover:bg-gold-50">
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }}
-          />
-          {form.logo_url ? (
-            <img src={form.logo_url} alt="Logo" className="mx-auto w-24 h-24 object-cover rounded-lg mb-2" />
-          ) : (
-            <div className="mx-auto w-24 h-24 rounded-lg gold-gradient flex items-center justify-center mb-2">
-              <Sparkles className="w-10 h-10 text-white" />
+        {selectedFile && preview ? (
+          <div className="border-2 border-dashed border-gold-200 rounded-lg p-5 bg-gold-50/40">
+            <div className="flex flex-col sm:flex-row items-center gap-4 justify-between">
+              <div className="flex items-center gap-4">
+                <img
+                  src={preview}
+                  alt="Logo preview"
+                  className="w-20 h-20 rounded object-cover border border-gold-200 shadow-sm bg-white shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-gold-900 truncate">
+                    {selectedFile.name}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {selectedFile.name} - {(selectedFile.size / 1024).toFixed(1)}KB
+                  </div>
+                  <div className="text-[11px] text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded mt-1.5 inline-block font-medium">
+                    Ready to upload
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRemovePreview}
+                  disabled={uploading}
+                  className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                >
+                  <X className="w-4 h-4 mr-1" /> Remove
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => uploadLogo(selectedFile)}
+                  disabled={uploading}
+                  className="gold-gradient text-white"
+                >
+                  {uploading ? (
+                    <><Loader2 className="w-4 h-4 animate-spin mr-1" /> Uploading…</>
+                  ) : (
+                    <><Upload className="w-4 h-4 mr-1" /> Upload Logo</>
+                  )}
+                </Button>
+              </div>
             </div>
-          )}
-          <div className="text-sm text-muted-foreground">
-            <Upload className="inline w-4 h-4 mr-1" />
-            {uploading ? "Uploading…" : "Click or drop an image to upload"}
           </div>
-        </label>
+        ) : (
+          <label className="block border-2 border-dashed border-gold-200 rounded-lg p-6 text-center cursor-pointer hover:bg-gold-50 transition-colors">
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleFileSelect(f);
+                e.target.value = "";
+              }}
+            />
+            {form.logo_url ? (
+              <img
+                src={form.logo_url}
+                alt="Logo"
+                className="mx-auto w-24 h-24 object-cover rounded-lg mb-2 shadow-sm border border-gold-100"
+              />
+            ) : (
+              <div className="mx-auto w-24 h-24 rounded-lg gold-gradient flex items-center justify-center mb-2 shadow-sm">
+                <Sparkles className="w-10 h-10 text-white" />
+              </div>
+            )}
+            <div className="text-sm text-muted-foreground mt-2">
+              <Upload className="inline w-4 h-4 mr-1" />
+              {uploading ? "Uploading…" : "Click or drop an image to upload"}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              Max file size 2MB (JPG, PNG, WEBP, SVG)
+            </div>
+          </label>
+        )}
       </section>
 
       <section className="bg-white border border-gold-100 rounded-xl p-5">

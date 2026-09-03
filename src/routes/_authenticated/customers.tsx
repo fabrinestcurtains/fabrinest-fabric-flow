@@ -41,6 +41,50 @@ function CustomersPage() {
     if (routeSearch.open) setOpenId(routeSearch.open);
   }, [routeSearch.open]);
 
+  const countsQuery = useQuery({
+    queryKey: ["customer-filter-counts"],
+    queryFn: async () => {
+      const [{ count: allCount }, { data: orders }] = await Promise.all([
+        supabase.from("customers").select("id", { count: "exact", head: true }),
+        supabase
+          .from("orders")
+          .select("customer_id, order_status, total_amount, advance_amount, discount_amount, order_date, created_at")
+          .or(ACTIVE_ORDERS_FILTER)
+          .order("created_at", { ascending: false }),
+      ]);
+
+      const dueCustIds = new Set<string>();
+      const latestStatusByCust = new Map<string, string>();
+
+      (orders ?? []).forEach((o: any) => {
+        if (!latestStatusByCust.has(o.customer_id)) {
+          latestStatusByCust.set(o.customer_id, o.order_status);
+        }
+        if (o.order_status !== "Cancelled" && dueOf(o) > 0) {
+          dueCustIds.add(o.customer_id);
+        }
+      });
+
+      let ongoingCount = 0;
+      let completedCount = 0;
+      let cancelledCount = 0;
+
+      latestStatusByCust.forEach((status) => {
+        if (ONGOING_STATUSES.includes(status as any)) ongoingCount++;
+        else if (status === "Completed") completedCount++;
+        else if (status === "Cancelled") cancelledCount++;
+      });
+
+      return {
+        all: allCount ?? 0,
+        ongoing: ongoingCount,
+        completed: completedCount,
+        cancelled: cancelledCount,
+        due: dueCustIds.size,
+      };
+    },
+  });
+
   const query = useQuery({
     queryKey: ["customers-paged", debouncedQ, filter, page],
     queryFn: async () => {
@@ -54,27 +98,44 @@ function CustomersPage() {
         custQuery = custQuery.or(`name.ilike.%${s}%,mobile.ilike.%${s}%`);
       }
 
-      if (filter === "Due") {
-        const { data: dueOrders, error: orderErr } = await supabase
+      if (filter !== "All") {
+        const { data: allOrders, error: orderErr } = await supabase
           .from("orders")
-          .select("customer_id, total_amount, advance_amount, discount_amount, order_status")
+          .select("customer_id, order_status, created_at, total_amount, advance_amount, discount_amount")
           .or(ACTIVE_ORDERS_FILTER)
-          .neq("order_status", "Cancelled");
+          .order("created_at", { ascending: false });
         if (orderErr) throw orderErr;
 
-        const dueCustIds = [
-          ...new Set(
-            (dueOrders ?? [])
-              .filter((o) => dueOf(o as any) > 0)
-              .map((o) => o.customer_id)
-          ),
-        ];
+        let targetCustIds: string[] = [];
+        if (filter === "Due") {
+          const dueCustIds = new Set<string>();
+          (allOrders ?? []).forEach((o: any) => {
+            if (o.order_status !== "Cancelled" && dueOf(o) > 0) {
+              dueCustIds.add(o.customer_id);
+            }
+          });
+          targetCustIds = [...dueCustIds];
+        } else {
+          const latestStatus = new Map<string, string>();
+          (allOrders ?? []).forEach((o: any) => {
+            if (!latestStatus.has(o.customer_id)) {
+              latestStatus.set(o.customer_id, o.order_status);
+            }
+          });
+          latestStatus.forEach((st, cid) => {
+            if (filter === "Ongoing" && ONGOING_STATUSES.includes(st as any)) {
+              targetCustIds.push(cid);
+            } else if (st === filter) {
+              targetCustIds.push(cid);
+            }
+          });
+        }
 
-        if (dueCustIds.length === 0) {
+        if (targetCustIds.length === 0) {
           return { rows: [] as Row[], total: 0 };
         }
 
-        custQuery = custQuery.in("id", dueCustIds);
+        custQuery = custQuery.in("id", targetCustIds);
       }
 
       custQuery = custQuery.range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
@@ -108,15 +169,6 @@ function CustomersPage() {
         } as Row;
       });
 
-      if (filter !== "All" && filter !== "Due") {
-        rows = rows.filter((r) => {
-          const status = r.last_order?.order_status;
-          if (!status) return false;
-          if (filter === "Ongoing") return ONGOING_STATUSES.includes(status);
-          return status === filter;
-        });
-      }
-
       if (filter === "Due") {
         rows = [...rows].sort((a, b) => b.total_due - a.total_due);
       }
@@ -129,6 +181,26 @@ function CustomersPage() {
   const paged = query.data?.rows ?? [];
 
   useEffect(() => setPage(1), [debouncedQ, filter]);
+
+  const getFilterLabel = (s: Filter) => {
+    const counts = countsQuery.data;
+    if (filter === s && debouncedQ) {
+      return `${s} (${total})`;
+    }
+    if (!counts) {
+      if (filter === s) return `${s} (${total})`;
+      return s;
+    }
+    const countMap: Record<Filter, number> = {
+      All: counts.all,
+      Ongoing: counts.ongoing,
+      Completed: counts.completed,
+      Cancelled: counts.cancelled,
+      Due: counts.due,
+    };
+    const count = filter === s && debouncedQ ? total : countMap[s];
+    return count !== undefined ? `${s} (${count})` : s;
+  };
 
   return (
     <div className="space-y-4">
@@ -149,9 +221,15 @@ function CustomersPage() {
                 : "bg-white border-gold-100 hover:border-gold-300"
             }`}
           >
-            {s}
+            {getFilterLabel(s)}
           </button>
         ))}
+      </div>
+
+      <div className="text-xs text-muted-foreground">
+        {query.isLoading
+          ? "Loading customers…"
+          : `Showing ${paged.length} of ${query.data?.total ?? 0} customers ${filter !== "All" ? `(${filter})` : ""} ${debouncedQ ? `for "${debouncedQ}"` : ""}`.trim()}
       </div>
 
       {query.isLoading ? (
@@ -317,6 +395,7 @@ function CustomerDetail({
                         setEditingCustomer(false);
                         qc.invalidateQueries({ queryKey: ["customers-paged"] });
                         qc.invalidateQueries({ queryKey: ["customer-detail", data.customer.id] });
+                        qc.invalidateQueries({ queryKey: ["customer-filter-counts"] });
                       }}
                     >
                       {savingCust ? "Saving…" : "Save Changes"}
@@ -436,7 +515,10 @@ function CustomerDetail({
               <div className="border-t border-gold-100 pt-4">
                 <OrderForm
                   mode={{ kind: "existing-customer", customer: data.customer }}
-                  onDone={() => setOrderAgain(false)}
+                  onDone={() => {
+                    setOrderAgain(false);
+                    qc.invalidateQueries({ queryKey: ["customer-filter-counts"] });
+                  }}
                   onCancel={() => setOrderAgain(false)}
                 />
               </div>
