@@ -35,10 +35,11 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
-import { supabase, type ActivityLog } from "@/lib/supabase";
+import { supabase, type ActivityLog, type Expense } from "@/lib/supabase";
 import { getDubaiNow } from "@/lib/format";
 import { OrderStatusBadge, type OrderStatus } from "@/components/status-badges";
 import { OrderDetailSheet } from "@/components/order-detail-sheet";
+import { ExpenseDetailSheet } from "@/components/expense-detail-sheet";
 import { CustomerDetail } from "@/routes/_authenticated/customers";
 import { EmptyState } from "@/components/empty-state";
 import { Pagination } from "@/components/pagination";
@@ -271,6 +272,7 @@ export function LogsPage() {
   const [page, setPage] = useState(1);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
   const [collapsedDates, setCollapsedDates] = useState<Record<string, boolean>>({});
   const [exporting, setExporting] = useState<"excel" | "pdf" | null>(null);
 
@@ -312,6 +314,69 @@ export function LogsPage() {
 
   const allLogs = logsQ.data ?? [];
 
+  // Lookup map for resolving missing reference_ids on older expense logs
+  const expensesLookupQ = useQuery({
+    queryKey: ["expenses-lookup-logs"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("expenses")
+        .select("id, expense_code, amount, category, expense_date, title, created_at");
+      return (data ?? []) as Expense[];
+    },
+    staleTime: 60_000,
+  });
+
+  const getExpenseRef = (log: ActivityLog): string | null => {
+    // 1. If reference_id is already a valid code, and not the literal string "expense"
+    if (log.reference_id) {
+      const clean = log.reference_id.replace(/^#/, "").trim();
+      if (clean && clean.toLowerCase() !== "expense") {
+        return clean;
+      }
+    }
+
+    // 2. Extract code (EXP...) from title or description
+    const text = `${log.description || ""} ${log.title || ""}`;
+    const codeMatch =
+      text.match(/\b(EXP[A-Za-z0-9]+)\b/i) ||
+      text.match(/Code:\s*([A-Za-z0-9_-]+)/i) ||
+      text.match(/#(EXP[A-Za-z0-9]+)/i);
+    if (codeMatch && codeMatch[1].toLowerCase() !== "expense") {
+      return codeMatch[1].trim();
+    }
+
+    // 3. Fallback: match against expenses list by amount, category, and date
+    const list = expensesLookupQ.data ?? [];
+    if (list.length > 0) {
+      const amtMatch = text.match(/(?:AED|\+AED)\s*([\d,]+(?:\.\d+)?)/i);
+      const amt = amtMatch ? parseFloat(amtMatch[1].replace(/,/g, "")) : null;
+      const cat = extractExpenseCategory(log);
+
+      if (amt != null || cat) {
+        const matches = list.filter((e) => {
+          const matchAmt = amt != null ? Math.abs(Number(e.amount) - amt) < 0.01 : true;
+          const matchCat = cat
+            ? e.category.toLowerCase().includes(cat.toLowerCase()) ||
+              cat.toLowerCase().includes(e.category.toLowerCase())
+            : true;
+          return matchAmt && matchCat;
+        });
+
+        if (matches.length > 0) {
+          try {
+            const logDateStr = formatInTimeZone(new Date(log.created_at), "Asia/Dubai", "yyyy-MM-dd");
+            const sameDate = matches.find((e) => e.expense_date === logDateStr);
+            if (sameDate && (sameDate.expense_code || sameDate.id)) {
+              return (sameDate.expense_code || sameDate.id).replace(/^#/, "").trim();
+            }
+          } catch {}
+          return (matches[0].expense_code || matches[0].id).replace(/^#/, "").trim();
+        }
+      }
+    }
+    return null;
+  };
+
   // Reset page on filter changes
   useEffect(() => {
     setPage(1);
@@ -332,10 +397,14 @@ export function LogsPage() {
               : l.activity_type === activeFilter;
 
       // Search filter
+      const isExp = l.activity_type.includes("expense");
+      const expRef = isExp ? getExpenseRef(l) : null;
+      const cleanRef = (l.reference_id ?? "").toLowerCase() === "expense" ? "" : (l.reference_id ?? "");
       const matchSearch =
         !q ||
         l.title.toLowerCase().includes(q) ||
-        (l.reference_id ?? "").toLowerCase().includes(q) ||
+        cleanRef.toLowerCase().includes(q) ||
+        (expRef ?? "").toLowerCase().includes(q) ||
         (l.description ?? "").toLowerCase().includes(q);
 
       if (!matchType || !matchSearch) return false;
@@ -401,11 +470,19 @@ export function LogsPage() {
   };
 
   const handleRowClick = (log: ActivityLog) => {
-    if (!log.reference_id) return;
     if (log.activity_type.includes("order") || log.activity_type.includes("payment")) {
-      setSelectedOrderId(log.reference_id);
+      if (log.reference_id && log.reference_id.toLowerCase() !== "expense") {
+        setSelectedOrderId(log.reference_id);
+      }
     } else if (log.activity_type.includes("customer")) {
-      setSelectedCustomerId(log.reference_id);
+      if (log.reference_id && log.reference_id.toLowerCase() !== "expense") {
+        setSelectedCustomerId(log.reference_id);
+      }
+    } else if (log.activity_type.includes("expense")) {
+      const expRef = getExpenseRef(log);
+      if (expRef && expRef.toLowerCase() !== "expense") {
+        setSelectedExpenseId(expRef);
+      }
     }
   };
 
@@ -439,12 +516,17 @@ export function LogsPage() {
           const dateStr = isValid(d) ? formatInTimeZone(d, "Asia/Dubai", "dd MMM, yyyy") : "—";
           const timeStr = isValid(d) ? `${formatInTimeZone(d, "Asia/Dubai", "hh:mm a")} (Dubai)` : "—";
           const typeLabel = TYPE_CONFIG[l.activity_type]?.badge ?? l.activity_type;
+          const isExp = l.activity_type.includes("expense");
+          const expRef = isExp ? getExpenseRef(l) : null;
+          const refRaw = expRef || (l.reference_id && l.reference_id.toLowerCase() !== "expense" ? l.reference_id : null);
+          const refDisplay = refRaw ? `#${refRaw.replace(/^#/, "")}` : "—";
+
           return [
             dateStr,
             timeStr,
             typeLabel,
             l.title,
-            l.reference_id ? `#${l.reference_id}` : "—",
+            refDisplay,
             l.description ?? "—",
           ];
         }),
@@ -544,7 +626,10 @@ export function LogsPage() {
         const timeStr = isValid(d) ? `${formatInTimeZone(d, "Asia/Dubai", "hh:mm a")} (Dubai)` : "—";
         const typeLabel = TYPE_CONFIG[log.activity_type]?.badge ?? log.activity_type;
         const title = (log.title || "—").slice(0, 22);
-        const refId = log.reference_id ? `#${log.reference_id.slice(0, 12)}` : "—";
+        const isExp = log.activity_type.includes("expense");
+        const expRef = isExp ? getExpenseRef(log) : null;
+        const refRaw = expRef || (log.reference_id && log.reference_id.toLowerCase() !== "expense" ? log.reference_id : null);
+        const refId = refRaw ? `#${refRaw.replace(/^#/, "").slice(0, 14)}` : "—";
         const desc = (log.description || "—").slice(0, 20);
 
         pdf.setTextColor(70);
@@ -857,8 +942,13 @@ export function LogsPage() {
                         const isOrderOrPayment =
                           log.activity_type.includes("order") || log.activity_type.includes("payment");
                         const isCustomer = log.activity_type.includes("customer");
+                        const isExpense = log.activity_type.includes("expense");
+                        const expenseRefId = isExpense ? getExpenseRef(log) : null;
                         const isClickable = Boolean(
-                          log.reference_id && (isOrderOrPayment || isCustomer),
+                          (log.reference_id &&
+                            (isOrderOrPayment || isCustomer) &&
+                            log.reference_id.toLowerCase() !== "expense") ||
+                          (isExpense && expenseRefId && expenseRefId.toLowerCase() !== "expense")
                         );
                         const amountBadge = extractPaymentAmount(log);
                         const statusBadge = extractNewStatus(log);
@@ -888,37 +978,47 @@ export function LogsPage() {
                                 </span>
 
                                 {/* Reference ID button/badge */}
-                                {log.reference_id && (
-                                  isOrderOrPayment ? (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedOrderId(log.reference_id!);
-                                      }}
-                                      className="text-[11px] font-mono px-2 py-0.5 rounded bg-gold-50 border border-gold-200 text-gold-700 font-semibold hover:bg-gold-100 hover:underline transition-colors"
-                                      title="Open Order Details"
-                                    >
-                                      #{log.reference_id}
-                                    </button>
-                                  ) : isCustomer ? (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setSelectedCustomerId(log.reference_id!);
-                                      }}
-                                      className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 font-semibold hover:bg-blue-100 hover:underline transition-colors"
-                                      title="Open Customer Details"
-                                    >
-                                      #{log.reference_id}
-                                    </button>
-                                  ) : (
-                                    <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-gold-50 border border-gold-100 text-gold-700">
-                                      #{log.reference_id}
-                                    </span>
-                                  )
-                                )}
+                                {isOrderOrPayment && log.reference_id && log.reference_id.toLowerCase() !== "expense" ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedOrderId(log.reference_id!);
+                                    }}
+                                    className="text-[11px] font-mono px-2 py-0.5 rounded bg-gold-50 border border-gold-200 text-gold-700 font-semibold hover:bg-gold-100 hover:underline transition-colors"
+                                    title="Open Order Details"
+                                  >
+                                    #{log.reference_id.replace(/^#/, "")}
+                                  </button>
+                                ) : isCustomer && log.reference_id && log.reference_id.toLowerCase() !== "expense" ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedCustomerId(log.reference_id!);
+                                    }}
+                                    className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-50 border border-blue-200 text-blue-700 font-semibold hover:bg-blue-100 hover:underline transition-colors"
+                                    title="Open Customer Details"
+                                  >
+                                    #{log.reference_id.replace(/^#/, "")}
+                                  </button>
+                                ) : isExpense && expenseRefId && expenseRefId.toLowerCase() !== "expense" ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedExpenseId(expenseRefId);
+                                    }}
+                                    className="font-mono text-xs px-2 py-0.5 rounded bg-gold-50 border border-gold-200 text-gold-700 font-semibold hover:bg-gold-100 hover:underline transition-colors cursor-pointer"
+                                    title="Open Expense Details"
+                                  >
+                                    #{expenseRefId.replace(/^#/, "")}
+                                  </button>
+                                ) : log.reference_id && log.reference_id.toLowerCase() !== "expense" ? (
+                                  <span className="text-[11px] font-mono px-1.5 py-0.5 rounded bg-gold-50 border border-gold-100 text-gold-700">
+                                    #{log.reference_id.replace(/^#/, "")}
+                                  </span>
+                                ) : null}
 
                                 {/* Amount badge for payment logs */}
                                 {amountBadge && (
@@ -996,6 +1096,15 @@ export function LogsPage() {
         open={!!selectedCustomerId}
         onOpenChange={(v) => {
           if (!v) setSelectedCustomerId(null);
+        }}
+      />
+
+      {/* Expense Detail Sheet */}
+      <ExpenseDetailSheet
+        expenseId={selectedExpenseId}
+        open={!!selectedExpenseId}
+        onOpenChange={(v) => {
+          if (!v) setSelectedExpenseId(null);
         }}
       />
     </div>

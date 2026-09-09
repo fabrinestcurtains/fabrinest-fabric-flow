@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { format } from "date-fns";
 
 export const SUPABASE_URL =
   import.meta.env.VITE_SUPABASE_URL ||
@@ -91,6 +92,7 @@ export type Payment = {
 
 export type Expense = {
   id: string;
+  expense_code?: string;
   title: string;
   amount: number;
   category: string;
@@ -99,6 +101,12 @@ export type Expense = {
   created_at: string;
   updated_at: string;
 };
+
+export const EXPENSE_CODE_PREFIX = "EXP";
+
+export function generateExpenseCode(date: Date = new Date()): string {
+  return `EXP${format(date, "ddMMyy")}${Math.floor(100 + Math.random() * 900)}`;
+}
 
 export type CompanySettings = {
   id: string;
@@ -158,13 +166,17 @@ export async function logActivity(
   description?: string,
 ) {
   try {
+    const cleanRef = reference_id?.replace(/^#/, "").trim();
+    const safeRef = cleanRef && cleanRef.toLowerCase() !== "expense" ? cleanRef : null;
+
     await supabase.from("activity_logs").insert({
       activity_type,
       title,
-      reference_id: reference_id ?? null,
+      reference_id: safeRef,
       description: description ?? null,
     });
   } catch {
     /* logging must never block the main action */
   }
 }
+

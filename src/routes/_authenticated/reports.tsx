@@ -732,12 +732,12 @@ function ReportsPage() {
               <div className="text-xs text-muted-foreground mt-0.5">Category wise spending analysis</div>
             </div>
             {/* Desktop badge */}
-            <span className="hidden md:inline-flex text-xs font-semibold bg-gold-50 text-gold-700 border border-gold-200 px-3 py-1 rounded-full whitespace-nowrap shrink-0">
+            <span className="hidden md:inline-flex text-xs font-semibold bg-gold-50 text-gold-700 border border-gold-200 px-3 py-1 rounded-full whitespace-nowrap shrink-0 flex-shrink-0">
               Total {fmtAED(expensesQ.data?.total ?? 0)}
             </span>
             {/* Mobile badge */}
             <span
-              className="md:hidden inline-flex items-center whitespace-nowrap shrink-0 rounded-full bg-[#FFFBF2] border border-gold-100 text-gold-700 font-semibold text-[11px]"
+              className="md:hidden inline-flex items-center whitespace-nowrap shrink-0 flex-shrink-0 rounded-full bg-[#FFFBF2] border border-gold-100 text-gold-700 font-semibold text-[11px]"
               style={{ padding: "4px 10px", lineHeight: 1, whiteSpace: "nowrap" }}
             >
               {fmtAED(expensesQ.data?.total ?? 0).replace(" ", "\u00A0")} total
@@ -760,7 +760,7 @@ function ReportsPage() {
                         <div className="flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             <span
-                              className="rounded-full shrink-0"
+                              className="rounded-full shrink-0 flex-shrink-0"
                               style={{ backgroundColor: color, width: "8px", height: "8px" }}
                             />
                             <span
@@ -770,11 +770,11 @@ function ReportsPage() {
                               {cat}
                             </span>
                           </div>
-                          <div className="flex items-baseline gap-1.5 shrink-0 whitespace-nowrap">
-                            <span className="font-bold text-gold-900 text-[12.5px] leading-tight">
+                          <div className="flex items-baseline gap-1.5 shrink-0 flex-shrink-0 whitespace-nowrap">
+                            <span className="font-bold text-gold-900 text-[12.5px] leading-tight whitespace-nowrap">
                               {fmtAED(amt).replace(" ", "\u00A0")}
                             </span>
-                            <span className="text-[11px] text-muted-foreground leading-tight">
+                            <span className="text-[11px] text-muted-foreground leading-tight whitespace-nowrap">
                               ({p.toFixed(1)}%)
                             </span>
                           </div>
