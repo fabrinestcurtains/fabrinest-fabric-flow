@@ -4,6 +4,7 @@ import {
   ClipboardList,
   Users,
   Wallet,
+  CreditCard,
   BarChart2,
   StickyNote,
   Settings as SettingsIcon,
@@ -30,6 +31,7 @@ const dubaiTime = () =>
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/orders", label: "Order History", icon: ClipboardList },
+  { to: "/collections", label: "Collections", icon: CreditCard },
   { to: "/customers", label: "Customers", icon: Users },
   { to: "/expenses", label: "Expenses", icon: Wallet },
   { to: "/reports", label: "Reports", icon: BarChart2 },

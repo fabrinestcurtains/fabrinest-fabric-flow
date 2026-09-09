@@ -10,10 +10,10 @@ import {
   PieChart, Pie, Cell, BarChart, Bar,
 } from "recharts";
 import { supabase, type Order, ACTIVE_ORDERS_FILTER } from "@/lib/supabase";
-import { fmtAED, fmtAEDShort, fmtDate, dueOf, ONGOING_STATUSES } from "@/lib/format";
+import { fmtAED, fmtAEDShort, fmtDate, dueOf, ONGOING_STATUSES, fmtDubaiDateWithRelative, getPaymentMethod } from "@/lib/format";
 import { NewOrderModal } from "@/components/new-order-modal";
 import { AdvancedSearchModal } from "@/components/advanced-search-modal";
-import { OrderStatusBadge } from "@/components/status-badges";
+import { OrderStatusBadge, PaymentMethodBadge } from "@/components/status-badges";
 import { OrderDetailSheet } from "@/components/order-detail-sheet";
 import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 
@@ -196,6 +196,21 @@ function Dashboard() {
     queryFn: async () => {
       const { data } = await supabase.from("orders").select("*, customers(name)").or(ACTIVE_ORDERS_FILTER).order("created_at", { ascending: false }).limit(5);
       return (data ?? []) as Order[];
+    },
+  });
+
+  const recentCollections = useQuery({
+    queryKey: ["dash-recent-collections"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("payments")
+        .select("*, orders!inner(id, customer_id, is_deleted, customers(name))")
+        .or(ACTIVE_ORDERS_FILTER, { foreignTable: "orders" })
+        .eq("payment_type", "payment")
+        .order("payment_date", { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return (data ?? []) as any[];
     },
   });
 
@@ -390,37 +405,179 @@ function Dashboard() {
           </div>
           <Link to="/orders" className="text-sm text-gold-600 hover:text-gold-800">See all →</Link>
         </div>
-        <div className="md:hidden text-[10px] text-muted-foreground text-center pb-2">← Swipe to see more →</div>
-        <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-          <div className="min-w-[600px]">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-white z-10">
-                <tr className="bg-gold-50 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <th className="text-left px-4 py-2 font-medium">Order ID</th>
-                  <th className="text-left px-4 py-2 font-medium">Customer</th>
-                  <th className="text-left px-4 py-2 font-medium">Date</th>
-                  <th className="text-right px-4 py-2 font-medium">Amount</th>
-                  <th className="text-left px-4 py-2 font-medium">Status</th>
+
+        {/* Mobile card view */}
+        <div className="md:hidden space-y-2 p-3">
+          {(recent.data ?? []).map((o) => {
+            const customerName = (o.customers as any)?.name ?? "—";
+            return (
+              <div
+                key={o.id}
+                onClick={() => setOrderOpen(o.id)}
+                className="border border-gold-100 rounded-lg p-3 bg-white hover:bg-gold-50/50 cursor-pointer transition-colors shadow-xs"
+              >
+                <div className="flex justify-between items-center">
+                  <span className="font-mono text-xs text-gold-700 font-medium">#{o.id}</span>
+                  <OrderStatusBadge status={o.order_status} />
+                </div>
+                <div className="font-semibold text-sm text-gold-900 mt-1">{customerName}</div>
+                <div className="flex justify-between items-center mt-2 text-xs">
+                  <span className="text-muted-foreground">{fmtDate(o.order_date)}</span>
+                  <span className="font-bold text-gold-700">{fmtAED(o.total_amount)}</span>
+                </div>
+              </div>
+            );
+          })}
+          {(recent.data ?? []).length === 0 && (
+            <div className="py-6 text-center text-sm text-muted-foreground">No orders yet.</div>
+          )}
+        </div>
+
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-white z-10">
+              <tr className="bg-gold-50 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th className="text-left px-4 py-2 font-medium">Order ID</th>
+                <th className="text-left px-4 py-2 font-medium">Customer</th>
+                <th className="text-left px-4 py-2 font-medium">Date</th>
+                <th className="text-right px-4 py-2 font-medium">Amount</th>
+                <th className="text-left px-4 py-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(recent.data ?? []).map((o) => (
+                <tr key={o.id} onClick={() => setOrderOpen(o.id)} className="border-t border-gold-50 hover:bg-gold-50/70 cursor-pointer">
+                  <td className="px-4 py-3 font-mono text-gold-700 text-xs">#{o.id}</td>
+                  <td className="px-4 py-3 font-semibold text-gold-900">{(o.customers as any)?.name ?? "—"}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{fmtDate(o.order_date)}</td>
+                  <td className="px-4 py-3 text-right font-bold text-gold-700">{fmtAED(o.total_amount)}</td>
+                  <td className="px-4 py-3"><OrderStatusBadge status={o.order_status} /></td>
                 </tr>
-              </thead>
-              <tbody>
-                {(recent.data ?? []).map((o) => (
-                  <tr key={o.id} onClick={() => setOrderOpen(o.id)} className="border-t border-gold-50 hover:bg-gold-50/70 cursor-pointer">
-                    <td className="px-4 py-3 font-mono text-gold-700 text-xs">#{o.id}</td>
-                    <td className="px-4 py-3 font-semibold text-gold-900">{(o.customers as any)?.name ?? "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{fmtDate(o.order_date)}</td>
-                    <td className="px-4 py-3 text-right font-bold text-gold-700">{fmtAED(o.total_amount)}</td>
-                    <td className="px-4 py-3"><OrderStatusBadge status={o.order_status} /></td>
-                  </tr>
-                ))}
-                {(recent.data ?? []).length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No orders yet.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+              ))}
+              {(recent.data ?? []).length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No orders yet.</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
+
+      {/* Recent Collections */}
+      <ChartErrorBoundary>
+        <div className="bg-white border border-gold-100 rounded-xl overflow-hidden shadow-[var(--shadow-card)]">
+          <div className="flex items-center justify-between p-4 md:p-5">
+            <div>
+              <div className="font-semibold text-gold-900">Recent Collections</div>
+              <div className="text-xs text-muted-foreground">Latest payments received (Asia/Dubai)</div>
+            </div>
+            <Link to="/orders" className="text-sm text-gold-600 hover:text-gold-800">Orders →</Link>
+          </div>
+
+          {/* Mobile card view */}
+          <div className="md:hidden space-y-2 p-3">
+            {(recentCollections.data ?? []).map((p) => {
+              const orderId = p.order_id || p.orders?.id;
+              const customerName = p.orders?.customers?.name ?? "—";
+              const method = getPaymentMethod(p);
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => orderId && setOrderOpen(orderId)}
+                  className="border border-gold-100 rounded-lg p-3 bg-white hover:bg-gold-50/50 cursor-pointer transition-colors shadow-xs"
+                >
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="font-semibold text-sm text-gold-900 truncate">{customerName}</span>
+                    <span className="text-green-600 font-bold text-sm shrink-0">+{fmtAED(p.amount)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-muted-foreground mt-1.5">
+                    <span>{fmtDubaiDateWithRelative(p.payment_date, p.created_at)}</span>
+                    {orderId && (
+                      <>
+                        <span>•</span>
+                        <span className="font-mono text-gold-700 font-medium">#{orderId}</span>
+                      </>
+                    )}
+                    <span>•</span>
+                    <PaymentMethodBadge method={method} />
+                    {p.note && (
+                      <>
+                        <span>•</span>
+                        <span className="truncate max-w-[120px]">{p.note}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {(recentCollections.data ?? []).length === 0 && (
+              <div className="py-6 text-center text-sm text-muted-foreground">No collections yet.</div>
+            )}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
+            <div className="min-w-[650px]">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white z-10">
+                  <tr className="bg-gold-50 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <th className="text-left px-4 py-2 font-medium">Date (Dubai)</th>
+                    <th className="text-left px-4 py-2 font-medium">Customer</th>
+                    <th className="text-left px-4 py-2 font-medium">Order ID</th>
+                    <th className="text-right px-4 py-2 font-medium">Amount</th>
+                    <th className="text-left px-4 py-2 font-medium">Type</th>
+                    <th className="text-left px-4 py-2 font-medium">Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(recentCollections.data ?? []).map((p) => {
+                    const orderId = p.order_id || p.orders?.id;
+                    const customerName = p.orders?.customers?.name ?? "—";
+                    const method = getPaymentMethod(p);
+                    return (
+                      <tr
+                        key={p.id}
+                        onClick={() => orderId && setOrderOpen(orderId)}
+                        className="border-t border-gold-50 hover:bg-gold-50/70 cursor-pointer transition-colors"
+                      >
+                        <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap font-medium">
+                          {fmtDubaiDateWithRelative(p.payment_date, p.created_at)}
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-gold-900">{customerName}</td>
+                        <td className="px-4 py-3 font-mono text-gold-700 text-xs">#{orderId}</td>
+                        <td className="px-4 py-3 text-right font-bold text-green-600 whitespace-nowrap">
+                          +{fmtAED(p.amount)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <PaymentMethodBadge method={method} />
+                        </td>
+                        <td className="px-4 py-3 text-xs text-muted-foreground max-w-[220px] truncate">
+                          {p.note || "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {(recentCollections.data ?? []).length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                        No collections yet
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div className="p-3 border-t border-gold-100 bg-gold-50/40 text-center">
+            <Link
+              to="/collections"
+              className="text-xs font-semibold text-gold-700 hover:text-gold-900 inline-flex items-center gap-1.5 transition-colors"
+            >
+              View All Collections →
+            </Link>
+          </div>
+        </div>
+      </ChartErrorBoundary>
 
       <NewOrderModal open={newOpen} onOpenChange={setNewOpen} onCreated={(id) => setOrderOpen(id)} />
       <AdvancedSearchModal open={searchOpen} onOpenChange={setSearchOpen} />

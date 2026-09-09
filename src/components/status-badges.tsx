@@ -46,3 +46,26 @@ export function statusBorderClass(status: OrderStatus) {
       return "border-l-red-500";
   }
 }
+
+export function PaymentMethodBadge({ method }: { method: "Cash" | "Bank" | "Refund" | string }) {
+  if (method === "Refund") {
+    return (
+      <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 text-red-700 px-2 py-0.5 text-[11px] font-medium">
+        Refund
+      </span>
+    );
+  }
+  if (method === "Bank") {
+    return (
+      <span className="inline-flex items-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 px-2 py-0.5 text-[11px] font-medium">
+        Bank
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 px-2 py-0.5 text-[11px] font-medium">
+      Cash
+    </span>
+  );
+}
+

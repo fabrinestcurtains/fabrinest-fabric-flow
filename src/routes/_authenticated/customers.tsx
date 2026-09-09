@@ -2,7 +2,7 @@ import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { Search, Users, ArrowDownLeft, ArrowUpRight, GitBranch, Pencil } from "lucide-react";
+import { Search, Users, ArrowDownLeft, ArrowUpRight, GitBranch, Pencil, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -15,6 +15,7 @@ import { RoomsDisplay } from "@/components/rooms-editor";
 import { EmptyState } from "@/components/empty-state";
 import { Pagination } from "@/components/pagination";
 import { OrderForm } from "@/components/order-form";
+import { OrderDetailSheet } from "@/components/order-detail-sheet";
 import { useDebouncedValue } from "@/hooks/use-debounce";
 
 const search = z.object({ open: z.string().optional() });
@@ -285,12 +286,104 @@ function CustomerDetail({
   customerId, open, onOpenChange,
 }: { customerId: string | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const qc = useQueryClient();
+  const [openOrderId, setOpenOrderId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [orderAgain, setOrderAgain] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [eName, setEName] = useState("");
   const [eMobile, setEMobile] = useState("");
   const [eAddress, setEAddress] = useState("");
   const [savingCust, setSavingCust] = useState(false);
+
+  useEffect(() => {
+    setExpanded({});
+  }, [customerId, open]);
+
+  const toggleOrder = (orderId: string, defaultExpanded: boolean) => {
+    setExpanded((prev) => ({
+      ...prev,
+      [orderId]: !(prev[orderId] ?? defaultExpanded),
+    }));
+  };
+
+  const renderOrderDetails = (
+    o: Order,
+    due: number,
+    pays: Payment[],
+    hist: OrderStatusHistory[]
+  ) => (
+    <>
+      <RoomsDisplay
+        rooms={o.rooms}
+        additionalInfo={o.additional_info}
+        legacyDetails={o.order_details}
+      />
+      {o.delivery_date && <div className="text-xs text-muted-foreground">Delivery: {fmtDate(o.delivery_date)}</div>}
+      <div className="grid grid-cols-3 gap-2 text-xs">
+        <div className="rounded border border-blue-200 bg-blue-50 p-2 text-blue-700"><div>TOTAL</div><b>{fmtAED(o.total_amount)}</b></div>
+        <div className="rounded border border-green-200 bg-green-50 p-2 text-green-700"><div>PAID</div><b>{fmtAED(o.advance_amount)}</b></div>
+        <div className={`rounded border p-2 ${due > 0 ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-700"}`}>
+          <div>DUE</div><b>{fmtAED(due)}</b>
+        </div>
+      </div>
+      {pays.length > 0 && (
+        <div className="text-xs divide-y divide-gold-100 border border-gold-100 rounded-md">
+          {pays.map((p) => {
+            const isRefund = p.payment_type === "refund";
+            return (
+              <div key={p.id} className="flex items-center justify-between px-2 py-1.5 gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  {isRefund
+                    ? <ArrowUpRight className="w-4 h-4 text-red-600 shrink-0" />
+                    : <ArrowDownLeft className="w-4 h-4 text-green-600 shrink-0" />}
+                  <span className="truncate">
+                    {fmtDate(p.payment_date)} · {p.note || "—"}
+                  </span>
+                  {isRefund && (
+                    <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 text-red-700 px-1.5 py-0.5 text-[10px] font-medium shrink-0">
+                      Refund
+                    </span>
+                  )}
+                </div>
+                <span className={`font-medium shrink-0 ${isRefund ? "text-red-600" : "text-green-600"}`}>
+                  {isRefund ? "− " : "+ "}{fmtAED(p.amount)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div className={`text-xs font-medium ${due > 0 ? "text-red-600" : isOngoing(o.order_status) ? "text-amber-600" : "text-green-600"}`}>
+        {due > 0 ? `⚠️ Still Due: ${fmtAED(due)}` : "✅ Fully Paid"}
+      </div>
+      <div>
+        <div className="flex items-center gap-1.5 mb-2">
+          <GitBranch className="w-3.5 h-3.5 text-gold-600" />
+          <div className="text-xs font-medium text-gold-800">Order Timeline</div>
+        </div>
+        {hist.length === 0 ? (
+          <div className="text-xs italic text-muted-foreground">No timeline data</div>
+        ) : (
+          <ol className="relative border-l border-gold-300 ml-2 space-y-2 pl-3">
+            {hist.map((h, idx) => {
+              const last = idx === hist.length - 1;
+              return (
+                <li key={h.id} className="relative">
+                  <span className={`absolute -left-[16px] top-1 w-2.5 h-2.5 rounded-full border-2 ${last ? "bg-gold-500 border-gold-500" : "bg-white border-gold-400"}`} />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <OrderStatusBadge status={h.status} />
+                    <span className="text-[11px] text-muted-foreground">{fmtDateTime(h.changed_at)}</span>
+                  </div>
+                  {h.note && <div className="text-[11px] italic text-muted-foreground mt-0.5">{h.note}</div>}
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+    </>
+  );
+
   const detail = useQuery({
     queryKey: ["customer-detail", customerId],
     enabled: !!customerId && open,
@@ -320,7 +413,8 @@ function CustomerDetail({
   const totalDue = (data?.orders ?? []).reduce((s, o) => s + dueOf(o), 0);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="w-full sm:max-w-xl overflow-y-auto">
         <SheetHeader><SheetTitle className="text-gold-900">Customer Details</SheetTitle></SheetHeader>
         {!data ? (
@@ -419,113 +513,135 @@ function CustomerDetail({
               </div>
             </div>
 
-            {data.orders.map((o, i) => {
-              const due = dueOf(o);
-              const pays = data.paymentsByOrder[o.id] ?? [];
-              const hist = data.historyByOrder[o.id] ?? [];
-              return (
-                <div key={o.id} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium text-gold-900">Order #{i + 1} — {fmtDate(o.order_date)}</div>
-                    <OrderStatusBadge status={o.order_status} />
-                  </div>
-                  <RoomsDisplay
-                    rooms={o.rooms}
-                    additionalInfo={o.additional_info}
-                    legacyDetails={o.order_details}
-                  />
-                  {o.delivery_date && <div className="text-xs text-muted-foreground">Delivery: {fmtDate(o.delivery_date)}</div>}
-                  <div className="grid grid-cols-3 gap-2 text-xs">
-                    <div className="rounded border border-blue-200 bg-blue-50 p-2 text-blue-700"><div>TOTAL</div><b>{fmtAED(o.total_amount)}</b></div>
-                    <div className="rounded border border-green-200 bg-green-50 p-2 text-green-700"><div>PAID</div><b>{fmtAED(o.advance_amount)}</b></div>
-                    <div className={`rounded border p-2 ${due > 0 ? "border-red-200 bg-red-50 text-red-700" : "border-green-200 bg-green-50 text-green-700"}`}>
-                      <div>DUE</div><b>{fmtAED(due)}</b>
-                    </div>
-                  </div>
-                  {pays.length > 0 && (
-                    <div className="text-xs divide-y divide-gold-100 border border-gold-100 rounded-md">
-                      {pays.map((p) => {
-                        const isRefund = p.payment_type === "refund";
-                        return (
-                          <div key={p.id} className="flex items-center justify-between px-2 py-1.5 gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              {isRefund
-                                ? <ArrowUpRight className="w-4 h-4 text-red-600 shrink-0" />
-                                : <ArrowDownLeft className="w-4 h-4 text-green-600 shrink-0" />}
-                              <span className="truncate">
-                                {fmtDate(p.payment_date)} · {p.note || "—"}
-                              </span>
-                              {isRefund && (
-                                <span className="inline-flex items-center rounded-full border border-red-200 bg-red-50 text-red-700 px-1.5 py-0.5 text-[10px] font-medium shrink-0">
-                                  Refund
-                                </span>
-                              )}
-                            </div>
-                            <span className={`font-medium shrink-0 ${isRefund ? "text-red-600" : "text-green-600"}`}>
-                              {isRefund ? "− " : "+ "}{fmtAED(p.amount)}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  <div className={`text-xs font-medium ${due > 0 ? "text-red-600" : isOngoing(o.order_status) ? "text-amber-600" : "text-green-600"}`}>
-                    {due > 0 ? `⚠️ Still Due: ${fmtAED(due)}` : "✅ Fully Paid"}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <GitBranch className="w-3.5 h-3.5 text-gold-600" />
-                      <div className="text-xs font-medium text-gold-800">Order Timeline</div>
-                    </div>
-                    {hist.length === 0 ? (
-                      <div className="text-xs italic text-muted-foreground">No timeline data</div>
-                    ) : (
-                      <ol className="relative border-l border-gold-300 ml-2 space-y-2 pl-3">
-                        {hist.map((h, idx) => {
-                          const last = idx === hist.length - 1;
-                          return (
-                            <li key={h.id} className="relative">
-                              <span className={`absolute -left-[16px] top-1 w-2.5 h-2.5 rounded-full border-2 ${last ? "bg-gold-500 border-gold-500" : "bg-white border-gold-400"}`} />
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <OrderStatusBadge status={h.status} />
-                                <span className="text-[11px] text-muted-foreground">{fmtDateTime(h.changed_at)}</span>
-                              </div>
-                              {h.note && <div className="text-[11px] italic text-muted-foreground mt-0.5">{h.note}</div>}
-                            </li>
-                          );
-                        })}
-                      </ol>
-                    )}
-                  </div>
-                  <div className="border-t border-dashed border-gold-200 pt-2" />
+            <div className="space-y-4">
+              <h3 className="font-semibold text-gold-900">Orders</h3>
 
+              {data.orders.map((o, i) => {
+                const due = dueOf(o);
+                const pays = data.paymentsByOrder[o.id] ?? [];
+                const hist = data.historyByOrder[o.id] ?? [];
+                const hasMultipleOrders = data.orders.length > 1;
+                const isExpanded = hasMultipleOrders
+                  ? (expanded[o.id] ?? (i === 0))
+                  : true;
+
+                if (hasMultipleOrders) {
+                  return (
+                    <div
+                      key={o.id}
+                      className="rounded-lg border border-gold-100 bg-white overflow-hidden transition-all shadow-2xs"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleOrder(o.id, i === 0)}
+                        className="w-full flex justify-between items-center p-3 text-left hover:bg-gold-50/50 transition-colors"
+                      >
+                        <span className="font-medium text-gold-900 text-sm">
+                          Order #{i + 1} —{" "}
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenOrderId(o.id);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.stopPropagation();
+                                setOpenOrderId(o.id);
+                              }
+                            }}
+                            className="font-mono text-gold-600 hover:underline cursor-pointer"
+                            title="View order details"
+                          >
+                            #{o.id}
+                          </span>{" "}
+                          — {fmtDate(o.order_date)}
+                        </span>
+                        <span className="flex items-center gap-2 shrink-0">
+                          <OrderStatusBadge status={o.order_status} />
+                          <ChevronDown
+                            className={`w-4 h-4 text-gold-600 transition-transform duration-200 ${
+                              isExpanded ? "rotate-180" : ""
+                            }`}
+                          />
+                        </span>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="p-3 pt-1 space-y-3 border-t border-gold-50">
+                          {renderOrderDetails(o, due, pays, hist)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={o.id} className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-medium text-gold-900">
+                        Order #{i + 1} —{" "}
+                        <button
+                          type="button"
+                          onClick={() => setOpenOrderId(o.id)}
+                          className="font-mono text-gold-600 hover:underline cursor-pointer"
+                        >
+                          #{o.id}
+                        </button>{" "}
+                        — {fmtDate(o.order_date)}
+                      </div>
+                      <OrderStatusBadge status={o.order_status} />
+                    </div>
+                    {renderOrderDetails(o, due, pays, hist)}
+                    <div className="border-t border-dashed border-gold-200 pt-2" />
+                  </div>
+                );
+              })}
+
+              {data.orders.length === 0 && (
+                <div className="text-sm text-center py-6 text-muted-foreground">
+                  No orders for this customer yet.
                 </div>
-              );
-            })}
+              )}
 
-            {totalDue > 0 && (
-              <div className="rounded-md bg-red-50 border border-red-200 p-3 text-red-700 font-semibold text-center">
-                TOTAL OUTSTANDING DUE: {fmtAED(totalDue)}
-              </div>
-            )}
+              {totalDue > 0 && (
+                <div className="rounded-md bg-red-50 border border-red-200 p-3 text-red-700 font-semibold text-center">
+                  TOTAL OUTSTANDING DUE: {fmtAED(totalDue)}
+                </div>
+              )}
 
-            {!orderAgain ? (
-              <Button onClick={() => setOrderAgain(true)} className="w-full gold-gradient">Order Again</Button>
-            ) : (
-              <div className="border-t border-gold-100 pt-4">
-                <OrderForm
-                  mode={{ kind: "existing-customer", customer: data.customer }}
-                  onDone={() => {
-                    setOrderAgain(false);
-                    qc.invalidateQueries({ queryKey: ["customer-filter-counts"] });
-                  }}
-                  onCancel={() => setOrderAgain(false)}
-                />
-              </div>
-            )}
+              {!orderAgain ? (
+                <Button onClick={() => setOrderAgain(true)} className="w-full gold-gradient">Order Again</Button>
+              ) : (
+                <div className="border-t border-gold-100 pt-4">
+                  <OrderForm
+                    mode={{ kind: "existing-customer", customer: data.customer }}
+                    onDone={() => {
+                      setOrderAgain(false);
+                      qc.invalidateQueries({ queryKey: ["customer-filter-counts"] });
+                    }}
+                    onCancel={() => setOrderAgain(false)}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         )}
       </SheetContent>
     </Sheet>
+
+    <OrderDetailSheet
+      orderId={openOrderId}
+      open={!!openOrderId}
+      onOpenChange={(v) => {
+        if (!v) {
+          setOpenOrderId(null);
+          qc.invalidateQueries({ queryKey: ["customer-detail", customerId] });
+          qc.invalidateQueries({ queryKey: ["customers-paged"] });
+        }
+      }}
+    />
+  </>
   );
 }

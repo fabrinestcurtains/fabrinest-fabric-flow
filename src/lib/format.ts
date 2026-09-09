@@ -1,4 +1,5 @@
 import { format, isValid, parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import type { OrderStatus, PaymentStatus, PaymentStatusDisplay } from "./supabase";
 
 export const fmtAED = (n: number | null | undefined) =>
@@ -97,4 +98,63 @@ export function listMonthsSince(startYear = 2025) {
  */
 export const getDubaiNow = () => new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Dubai" }));
 export const dubaiNow = getDubaiNow;
+
+export function fmtDubaiDateWithRelative(dateStr?: string | null, timeSource?: string | null): string {
+  if (!dateStr) return "—";
+  try {
+    const dNow = getDubaiNow();
+    const todayDubaiStr = format(dNow, "yyyy-MM-dd");
+    const yesterdayDate = new Date(dNow);
+    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+    const yesterdayDubaiStr = format(yesterdayDate, "yyyy-MM-dd");
+
+    const isOnlyDate = /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim());
+    const targetDateStr = isOnlyDate
+      ? dateStr.trim()
+      : formatInTimeZone(new Date(dateStr), "Asia/Dubai", "yyyy-MM-dd");
+
+    let timeStr = "";
+    if (!isOnlyDate) {
+      timeStr = formatInTimeZone(new Date(dateStr), "Asia/Dubai", "hh:mm a");
+    } else if (timeSource && isValid(new Date(timeSource))) {
+      const timeSourceDateStr = formatInTimeZone(new Date(timeSource), "Asia/Dubai", "yyyy-MM-dd");
+      if (timeSourceDateStr === targetDateStr) {
+        timeStr = formatInTimeZone(new Date(timeSource), "Asia/Dubai", "hh:mm a");
+      }
+    }
+
+    if (targetDateStr === todayDubaiStr) {
+      return timeStr ? `Today, ${timeStr}` : "Today";
+    }
+    if (targetDateStr === yesterdayDubaiStr) {
+      return timeStr ? `Yesterday, ${timeStr}` : "Yesterday";
+    }
+
+    const d = isOnlyDate ? parseISO(targetDateStr) : new Date(dateStr);
+    return timeStr ? `${format(d, "dd/MM/yyyy")}, ${timeStr}` : format(d, "dd/MM/yyyy");
+  } catch {
+    return fmtDate(dateStr);
+  }
+}
+
+export function getPaymentMethod(payment: {
+  note?: string | null;
+  payment_type?: string;
+  payment_method?: string;
+}): "Cash" | "Bank" | "Refund" {
+  if (payment.payment_type === "refund") return "Refund";
+  if (payment.payment_method) {
+    const m = payment.payment_method.toLowerCase();
+    if (m.includes("bank") || m.includes("card") || m.includes("transfer") || m.includes("online")) {
+      return "Bank";
+    }
+    if (m.includes("cash")) return "Cash";
+  }
+  const note = (payment.note ?? "").toLowerCase();
+  if (/\b(bank|transfer|card|online|cheque|check|pos|wire|account|deposit)\b/i.test(note)) {
+    return "Bank";
+  }
+  return "Cash";
+}
+
 

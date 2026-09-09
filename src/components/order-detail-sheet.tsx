@@ -191,6 +191,9 @@ export function OrderDetailSheet({
     qc.invalidateQueries({ queryKey: ["all-time-due"] });
     qc.invalidateQueries({ queryKey: ["dash-monthly"] });
     qc.invalidateQueries({ queryKey: ["dash-monthly-v3"] });
+    qc.invalidateQueries({ queryKey: ["dash-recent-collections"] });
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["customer-detail"] });
   };
 
   const changeOrderStatus = async (v: OrderStatus) => {
@@ -255,6 +258,9 @@ export function OrderDetailSheet({
     qc.invalidateQueries({ queryKey: ["all-time-due"] });
     qc.invalidateQueries({ queryKey: ["dash-monthly"] });
     qc.invalidateQueries({ queryKey: ["dash-monthly-v3"] });
+    qc.invalidateQueries({ queryKey: ["dash-recent-collections"] });
+    qc.invalidateQueries({ queryKey: ["customer-payments"] });
+    qc.invalidateQueries({ queryKey: ["customer-detail"] });
   };
 
   return (

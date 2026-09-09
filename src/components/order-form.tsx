@@ -243,6 +243,8 @@ export function OrderForm({
       qc.invalidateQueries({ queryKey: ["all-time-due"] });
       qc.invalidateQueries({ queryKey: ["dash-monthly"] });
       qc.invalidateQueries({ queryKey: ["dash-monthly-v3"] });
+      qc.invalidateQueries({ queryKey: ["dash-recent-collections"] });
+      qc.invalidateQueries({ queryKey: ["customer-payments"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to save order");
     } finally {

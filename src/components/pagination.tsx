@@ -20,11 +20,23 @@ export function Pagination({
         Page {page} of {pages} · {total} items
       </div>
       <div className="flex gap-2">
-        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => onChange(page - 1)}>
-          <ChevronLeft className="w-4 h-4" /> Prev
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page <= 1}
+          onClick={() => onChange(page - 1)}
+          className="min-h-[44px] px-3.5 text-xs"
+        >
+          <ChevronLeft className="w-4 h-4 mr-1" /> Prev
         </Button>
-        <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => onChange(page + 1)}>
-          Next <ChevronRight className="w-4 h-4" />
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={page >= pages}
+          onClick={() => onChange(page + 1)}
+          className="min-h-[44px] px-3.5 text-xs"
+        >
+          Next <ChevronRight className="w-4 h-4 ml-1" />
         </Button>
       </div>
     </div>
