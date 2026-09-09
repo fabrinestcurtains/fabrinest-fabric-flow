@@ -31,6 +31,54 @@ export const Route = createFileRoute("/_authenticated/expenses")({
 
 const PAGE_SIZE = 10;
 
+const EXPENSE_CAT_COLORS: Record<string, string> = {
+  "Raw Materials & Fabric": "#8B5A2B",
+  "Fixing Man": "#C9A86A",
+  "Transport & Delivery": "#D4B896",
+  "Marketing & Advertising": "#A8C3A0",
+  "Rent / Showroom": "#7c3aed",
+  "Staff Salary": "#0ea5e9",
+  "Tools & Equipment": "#f59e0b",
+  "Labour": "#ec4899",
+  "Others": "#94a3b8",
+};
+
+const DEFAULT_FALLBACK_COLORS = [
+  "#8B5A2B",
+  "#C9A86A",
+  "#D4B896",
+  "#A8C3A0",
+  "#7c3aed",
+  "#0ea5e9",
+  "#f59e0b",
+  "#ec4899",
+  "#14b8a6",
+  "#94a3b8",
+];
+
+function getCategoryColor(cat: string, index: number = 0): string {
+  if (EXPENSE_CAT_COLORS[cat]) return EXPENSE_CAT_COLORS[cat];
+  if (cat.startsWith("Others")) return "#94a3b8";
+  return DEFAULT_FALLBACK_COLORS[index % DEFAULT_FALLBACK_COLORS.length];
+}
+
+function CategoryBadge({ category, className = "" }: { category: string; className?: string }) {
+  const isOthers = category.startsWith("Others");
+  return (
+    <span
+      title={category}
+      style={{ whiteSpace: "nowrap" }}
+      className={`inline-flex items-center whitespace-nowrap px-2.5 py-1 rounded-full text-[11px] font-medium border shrink-0 ${
+        isOthers
+          ? "bg-gray-100 border-gray-200 text-gray-700"
+          : "bg-gold-50 border-gold-100 text-gold-800"
+      } ${className}`}
+    >
+      <span className="truncate">{category}</span>
+    </span>
+  );
+}
+
 function ExpensesPage() {
   const qc = useQueryClient();
   const nav = useNavigate();
@@ -38,6 +86,7 @@ function ExpensesPage() {
   const months = useMemo(() => listMonthsSince(2025), []);
   const [selected, setSelected] = useState(monthKey(new Date()));
   const selectedDate = months.find((m) => m.value === selected)!.date;
+  const monthLabel = months.find((m) => m.value === selected)?.label ?? "";
   const monthStart = format(startOfMonth(selectedDate), "yyyy-MM-dd");
   const monthEnd = format(endOfMonth(selectedDate), "yyyy-MM-dd");
 
@@ -106,6 +155,24 @@ function ExpensesPage() {
     },
   });
 
+  const breakdownQ = useQuery({
+    queryKey: ["expenses-breakdown", selected],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("expenses")
+        .select("amount, category")
+        .gte("expense_date", monthStart)
+        .lte("expense_date", monthEnd);
+      const rows = (data ?? []) as { amount: number; category: string }[];
+      const total = rows.reduce((s, r) => s + Number(r.amount), 0);
+      const byCat: Record<string, number> = {};
+      rows.forEach((r) => {
+        byCat[r.category] = (byCat[r.category] ?? 0) + Number(r.amount);
+      });
+      return { total, byCat };
+    },
+  });
+
   const expensesListQ = useQuery({
     queryKey: ["expenses-list-paged", selected, debouncedQ, page],
     queryFn: async () => {
@@ -143,10 +210,10 @@ function ExpensesPage() {
       toast.success("Expense deleted");
       await logActivity(
         "expense_deleted",
-        "Expense deleted",
+        expense ? `Expense deleted: ${fmtAED(Number(expense.amount))} - ${expense.title} (${expense.category})` : "Expense deleted",
         undefined,
         expense
-          ? `${expense.title} · ${expense.category} · AED ${Number(expense.amount).toLocaleString()}`
+          ? `${expense.title} · ${expense.category} · ${fmtAED(Number(expense.amount))}`
           : "Entry removed",
       );
     }
@@ -154,6 +221,7 @@ function ExpensesPage() {
     qc.invalidateQueries({ queryKey: ["expenses-list-paged"] });
     qc.invalidateQueries({ queryKey: ["expenses-month-summary"] });
     qc.invalidateQueries({ queryKey: ["expenses-chart"] });
+    qc.invalidateQueries({ queryKey: ["expenses-breakdown"] });
   };
 
   return (
@@ -209,6 +277,119 @@ function ExpensesPage() {
         </div>
       </div>
 
+      {/* Expense Breakdown */}
+      <div className="bg-white border border-gold-100 rounded-xl p-4 md:p-5">
+        <div className="flex items-start justify-between gap-[10px] mb-3.5">
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-gold-900 text-xs min-[400px]:text-sm sm:text-base leading-snug">
+              Expense Breakdown — {monthLabel}
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">Category wise spending analysis</div>
+          </div>
+          {/* Desktop badge */}
+          <span className="hidden md:inline-flex text-xs font-semibold bg-gold-50 text-gold-700 border border-gold-200 px-3 py-1 rounded-full whitespace-nowrap shrink-0">
+            Total {fmtAED(breakdownQ.data?.total ?? 0)}
+          </span>
+          {/* Mobile badge */}
+          <span
+            className="md:hidden inline-flex items-center whitespace-nowrap shrink-0 rounded-full bg-[#FFFBF2] border border-gold-100 text-gold-700 font-semibold text-[11px]"
+            style={{ padding: "4px 10px", lineHeight: 1, whiteSpace: "nowrap" }}
+          >
+            {fmtAED(breakdownQ.data?.total ?? 0).replace(" ", "\u00A0")} total
+          </span>
+        </div>
+
+        {breakdownQ.isLoading ? (
+          <div className="text-xs text-muted-foreground py-4 text-center">Loading breakdown…</div>
+        ) : Object.keys(breakdownQ.data?.byCat ?? {}).length === 0 ? (
+          <div className="text-sm text-muted-foreground py-4 text-center">No expenses recorded.</div>
+        ) : (
+          <>
+            {/* Mobile version (demo style) */}
+            <div className="md:hidden space-y-3">
+              {Object.entries(breakdownQ.data!.byCat)
+                .sort((a, b) => b[1] - a[1])
+                .map(([cat, amt], i) => {
+                  const p = breakdownQ.data!.total ? (amt / breakdownQ.data!.total) * 100 : 0;
+                  const color = getCategoryColor(cat, i);
+                  return (
+                    <div key={cat} className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span
+                            className="rounded-full shrink-0"
+                            style={{ backgroundColor: color, width: "8px", height: "8px" }}
+                          />
+                          <span
+                            className="font-semibold text-gold-950 truncate text-[12.5px] leading-tight"
+                            title={cat}
+                          >
+                            {cat}
+                          </span>
+                        </div>
+                        <div className="flex items-baseline gap-1.5 shrink-0 whitespace-nowrap">
+                          <span className="font-bold text-gold-900 text-[12.5px] leading-tight">
+                            {fmtAED(amt).replace(" ", "\u00A0")}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground leading-tight">
+                            ({p.toFixed(1)}%)
+                          </span>
+                        </div>
+                      </div>
+                      <div className="h-[6px] w-full rounded-full bg-[#F0E6D6] overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-300"
+                          style={{ width: `${Math.min(100, Math.max(0, p))}%`, backgroundColor: color }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Desktop version (same as Reports desktop) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-white z-10">
+                  <tr className="bg-gold-50 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <th className="text-left px-3 py-2 font-medium">Category</th>
+                    <th className="text-right px-3 py-2 font-medium">Amount</th>
+                    <th className="text-right px-3 py-2 font-medium">% Share</th>
+                    <th className="text-left px-3 py-2 font-medium w-[35%]">Distribution</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(breakdownQ.data!.byCat)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([cat, amt], i) => {
+                      const p = breakdownQ.data!.total ? (amt / breakdownQ.data!.total) * 100 : 0;
+                      const color = getCategoryColor(cat, i);
+                      return (
+                        <tr key={cat} className="border-t border-gold-50">
+                          <td className="px-3 py-2 text-gold-900">{cat}</td>
+                          <td className="px-3 py-2 text-right font-medium">{fmtAED(amt)}</td>
+                          <td className="px-3 py-2 text-right text-muted-foreground">{p.toFixed(1)}%</td>
+                          <td className="px-3 py-2">
+                            <div className="h-2 rounded-full bg-gold-50 overflow-hidden">
+                              <div className="h-full rounded-full" style={{ width: `${p}%`, background: color }} />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  <tr className="border-t-2 border-gold-200 bg-gold-50/40">
+                    <td className="px-3 py-2 font-bold text-gold-900">TOTAL</td>
+                    <td className="px-3 py-2 text-right font-bold text-gold-700">{fmtAED(breakdownQ.data!.total)}</td>
+                    <td className="px-3 py-2 text-right font-bold">100%</td>
+                    <td className="px-3 py-2"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+
       <div className="relative">
         <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input placeholder="Search expenses by title or category…" className="pl-9" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -227,29 +408,123 @@ function ExpensesPage() {
           <EmptyState icon={<Wallet className="w-10 h-10" />} title="No expenses for this month" />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gold-50 text-gold-800">
-                  <tr>
-                    <th className="text-left px-3 py-2">Date</th>
-                    <th className="text-left px-3 py-2">Title</th>
-                    <th className="text-left px-3 py-2">Category</th>
-                    <th className="text-right px-3 py-2">Amount</th>
-                    <th className="text-left px-3 py-2">Description</th>
-                    <th className="text-right px-3 py-2">Actions</th>
+            {/* Mobile Card System */}
+            <div className="md:hidden flex flex-col gap-2.5 p-2">
+              {paged.map((e) => (
+                <div
+                  key={e.id}
+                  className="bg-white border border-gold-100 rounded-xl p-3 shadow-sm space-y-2 hover:bg-gold-50/40 transition-colors"
+                >
+                  {/* Top row: Date left + Amount right */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">
+                      {fmtDate(e.expense_date)}
+                    </span>
+                    <span
+                      className="font-bold text-gold-900 text-sm whitespace-nowrap"
+                      style={{ whiteSpace: "nowrap" }}
+                    >
+                      {fmtAED(e.amount).replace(" ", "\u00A0")}
+                    </span>
+                  </div>
+
+                  {/* Middle row: Title left + Category badge right */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-sm text-gold-950 truncate min-w-0 flex-1">
+                      {e.title}
+                    </span>
+                    <CategoryBadge category={e.category} className="max-w-[120px]" />
+                  </div>
+
+                  {/* Bottom row: Description (if exists) */}
+                  {e.description && (
+                    <div className="text-xs text-muted-foreground">
+                      {e.description}
+                    </div>
+                  )}
+
+                  {/* Actions row: Edit/Delete right aligned */}
+                  <div className="flex items-center justify-end gap-1 pt-1.5 border-t border-gold-50">
+                    <button
+                      type="button"
+                      className="p-1.5 hover:bg-gold-100 rounded text-gold-700 transition-colors"
+                      onClick={() => setDlg({ open: true, edit: e })}
+                      aria-label="Edit"
+                      title="Edit"
+                    >
+                      <Pencil className="w-3.5 h-3.5 text-gold-600" />
+                    </button>
+                    <button
+                      type="button"
+                      className="p-1.5 hover:bg-red-50 rounded text-red-600 transition-colors"
+                      onClick={() => setDeleteId(e.id)}
+                      aria-label="Delete"
+                      title="Delete"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full min-w-[700px] text-sm border-collapse">
+                <thead className="bg-gold-50/70 text-gold-900 border-b border-gold-100">
+                  <tr className="text-[10px] uppercase tracking-wider font-semibold">
+                    <th className="text-left px-4 py-3 w-[110px] whitespace-nowrap">Date</th>
+                    <th className="text-left px-4 py-3 min-w-[120px]">Title</th>
+                    <th className="text-center px-4 py-3 whitespace-nowrap">Category</th>
+                    <th className="text-right px-4 py-3 whitespace-nowrap min-w-[90px]">Amount</th>
+                    <th className="text-left px-4 py-3 min-w-[140px]">Description</th>
+                    <th className="text-right px-4 py-3 w-[70px] whitespace-nowrap">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-gold-50">
                   {paged.map((e) => (
-                    <tr key={e.id} className="border-t border-gold-100">
-                      <td className="px-3 py-2 whitespace-nowrap">{fmtDate(e.expense_date)}</td>
-                      <td className="px-3 py-2">{e.title}</td>
-                      <td className="px-3 py-2"><span className={`inline-flex px-2 py-0.5 rounded-full border text-xs ${e.category.startsWith("Others") ? "bg-gray-100 border-gray-200 text-gray-700" : "bg-gold-50 border-gold-100"}`}>{e.category}</span></td>
-                      <td className="px-3 py-2 text-right font-medium">{fmtAED(e.amount)}</td>
-                      <td className="px-3 py-2 text-muted-foreground max-w-xs truncate">{e.description || "—"}</td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <button className="p-1.5 hover:bg-gold-50 rounded" onClick={() => setDlg({ open: true, edit: e })} aria-label="Edit"><Pencil className="w-4 h-4 text-gold-600" /></button>
-                        <button className="p-1.5 hover:bg-red-50 rounded" onClick={() => setDeleteId(e.id)} aria-label="Delete"><Trash2 className="w-4 h-4 text-red-500" /></button>
+                    <tr key={e.id} className="hover:bg-gold-50/40 transition-colors">
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs text-muted-foreground font-medium align-middle w-[110px]">
+                        {fmtDate(e.expense_date)}
+                      </td>
+                      <td className="px-4 py-3.5 align-middle min-w-[120px]">
+                        <div className="font-semibold text-gold-950 text-xs">{e.title}</div>
+                      </td>
+                      <td className="px-4 py-3.5 text-center whitespace-nowrap align-middle">
+                        <div className="flex justify-center">
+                          <CategoryBadge category={e.category} />
+                        </div>
+                      </td>
+                      <td
+                        className="text-right font-bold whitespace-nowrap px-4 py-3.5 text-gold-900 text-xs align-middle min-w-[90px]"
+                        style={{ whiteSpace: "nowrap", minWidth: "90px" }}
+                      >
+                        {fmtAED(e.amount).replace(" ", "\u00A0")}
+                      </td>
+                      <td className="px-4 py-3.5 text-xs text-muted-foreground max-w-xs truncate align-middle" title={e.description || undefined}>
+                        {e.description || "—"}
+                      </td>
+                      <td className="px-4 py-3.5 text-right whitespace-nowrap align-middle w-[70px]">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            className="p-1.5 hover:bg-gold-100 rounded text-gold-700 transition-colors"
+                            onClick={() => setDlg({ open: true, edit: e })}
+                            aria-label="Edit"
+                            title="Edit"
+                          >
+                            <Pencil className="w-3.5 h-3.5 text-gold-600" />
+                          </button>
+                          <button
+                            type="button"
+                            className="p-1.5 hover:bg-red-50 rounded text-red-600 transition-colors"
+                            onClick={() => setDeleteId(e.id)}
+                            aria-label="Delete"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -345,16 +620,23 @@ function ExpenseFormDialog({
     setBusy(false);
     if (error) return toast.error(error.message);
     toast.success(editing ? "Expense updated" : "Expense added");
+    const expTitle = editing
+      ? `Expense updated: ${fmtAED(payload.amount)} - ${payload.title} (${payload.category})`
+      : `Expense ${fmtAED(payload.amount)} - ${payload.title} (${payload.category})`;
+    const expDesc = `Category: ${payload.category}, Amount: ${fmtAED(payload.amount)}${payload.description ? `, Note: ${payload.description}` : ""}`;
     await logActivity(
       editing ? "expense_edited" : "expense_created",
-      editing ? "Expense updated" : "New expense added",
+      expTitle,
       editing?.id,
-      `${payload.category} · AED ${Number(payload.amount).toLocaleString()}`,
+      expDesc,
     );
     onOpenChange(false);
     qc.invalidateQueries({ queryKey: ["expenses-month"] });
     qc.invalidateQueries({ queryKey: ["expenses-chart"] });
     qc.invalidateQueries({ queryKey: ["expenses-prev"] });
+    qc.invalidateQueries({ queryKey: ["expenses-list-paged"] });
+    qc.invalidateQueries({ queryKey: ["expenses-month-summary"] });
+    qc.invalidateQueries({ queryKey: ["expenses-breakdown"] });
   };
 
   return (

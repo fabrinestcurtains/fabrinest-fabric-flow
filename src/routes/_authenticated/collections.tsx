@@ -38,6 +38,7 @@ import {
 } from "@/lib/supabase";
 import {
   fmtAED,
+  fmtDate,
   getDubaiNow,
   getPaymentMethod,
 } from "@/lib/format";
@@ -80,12 +81,12 @@ function formatDateHeader(dateStr: string): string {
     const todayStr = format(dubaiNow, "yyyy-MM-dd");
     const yesterdayStr = format(subDays(dubaiNow, 1), "yyyy-MM-dd");
     if (dateStr === todayStr) {
-      return `Today — ${format(d, "MMM dd, yyyy")}`;
+      return `Today — ${format(d, "dd MMM, yyyy")}`;
     }
     if (dateStr === yesterdayStr) {
-      return `Yesterday — ${format(d, "MMM dd, yyyy")}`;
+      return `Yesterday — ${format(d, "dd MMM, yyyy")}`;
     }
-    return format(d, "MMM dd, yyyy");
+    return format(d, "dd MMM, yyyy");
   } catch {
     return dateStr;
   }
@@ -397,9 +398,10 @@ export function CollectionsPage() {
         ...items.map((p) => {
           const method = getPaymentMethod(p);
           const cust = p.orders?.customers;
+          const dubaiTime = formatDubaiTime(p.created_at);
           return [
-            p.payment_date,
-            formatDubaiTime(p.created_at),
+            fmtDate(p.payment_date),
+            dubaiTime !== "—" ? `${dubaiTime} (Dubai)` : "—",
             cust?.name ?? "—",
             cust?.mobile ?? "—",
             `#${p.order_id || p.orders?.id || ""}`,
@@ -414,8 +416,8 @@ export function CollectionsPage() {
 
       const ws = XLSX.utils.aoa_to_sheet(rows);
       ws["!cols"] = [
-        { wch: 14 },
-        { wch: 14 },
+        { wch: 16 },
+        { wch: 18 },
         { wch: 24 },
         { wch: 16 },
         { wch: 16 },
@@ -481,8 +483,8 @@ export function CollectionsPage() {
       y += 6;
 
       // Table Columns
-      const colX = [12, 34, 52, 98, 126, 150, 172];
-      const headers = ["Date", "Time", "Customer", "Order ID", "Method", "Amount", "Note"];
+      const colX = [12, 38, 70, 108, 134, 154, 174];
+      const headers = ["Date", "Time (Dubai)", "Customer", "Order ID", "Method", "Amount", "Note"];
 
       pdf.setFillColor(243, 237, 226);
       pdf.rect(10, y - 4, pageW - 20, 7, "F");
@@ -515,10 +517,11 @@ export function CollectionsPage() {
         const custName = (p.orders?.customers?.name ?? "—").slice(0, 20);
         const orderId = `#${(p.order_id || p.orders?.id || "").slice(0, 12)}`;
         const note = (p.note || "—").slice(0, 14);
+        const dubaiTime = formatDubaiTime(p.created_at);
 
         pdf.setTextColor(70);
-        pdf.text(p.payment_date, colX[0], y);
-        pdf.text(formatDubaiTime(p.created_at), colX[1], y);
+        pdf.text(fmtDate(p.payment_date), colX[0], y);
+        pdf.text(dubaiTime !== "—" ? `${dubaiTime} (Dubai)` : "—", colX[1], y);
         pdf.text(custName, colX[2], y);
         pdf.text(orderId, colX[3], y);
         pdf.text(method, colX[4], y);
@@ -542,7 +545,7 @@ export function CollectionsPage() {
       pdf.setFont("helvetica", "bold");
       pdf.setFontSize(9);
       pdf.setTextColor(120, 60, 10);
-      pdf.text("Total Collections:", colX[4], y);
+      pdf.text("Total Collections:", colX[3], y);
       pdf.setTextColor(22, 101, 52);
       pdf.text(`AED ${totalSum.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, colX[5], y);
 
@@ -865,7 +868,7 @@ export function CollectionsPage() {
                     onClick={() => toggleCollapseDate(group.date)}
                     className="w-full flex items-center justify-between px-4 py-3 bg-gold-50/70 border-b border-gold-100 hover:bg-gold-50 transition-colors text-left"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       {isCollapsed ? (
                         <ChevronRight className="w-4 h-4 text-gold-700 shrink-0" />
                       ) : (
@@ -874,13 +877,15 @@ export function CollectionsPage() {
                       <span className="font-semibold text-gold-900 text-sm">
                         {formatDateHeader(group.date)}
                       </span>
+                      <span className="text-sm text-gold-600 font-medium">
+                        — Total +{fmtAED(group.totalAmount)}
+                      </span>
                       <span className="text-xs text-muted-foreground font-normal">
                         ({group.items.length} {group.items.length === 1 ? "payment" : "payments"})
                       </span>
                     </div>
 
-                    <div className="text-right">
-                      <span className="text-xs text-muted-foreground mr-1.5">Total:</span>
+                    <div className="text-right hidden sm:block">
                       <span className="font-bold text-emerald-700 text-sm">
                         +{fmtAED(group.totalAmount)}
                       </span>
@@ -958,16 +963,16 @@ export function CollectionsPage() {
                         <div className="hidden md:block lg:hidden text-[10px] text-muted-foreground text-center py-1">
                           ← Swipe to see more →
                         </div>
-                        <table className="w-full text-sm">
+                        <table className="w-full min-w-[700px] text-sm border-collapse">
                           <thead>
                             <tr className="bg-white text-[10px] uppercase tracking-wider text-muted-foreground border-b border-gold-50">
-                              <th className="text-left px-4 py-2 font-medium">Time (Dubai)</th>
-                              <th className="text-left px-4 py-2 font-medium">Customer</th>
-                              <th className="text-left px-4 py-2 font-medium">Order ID</th>
-                              <th className="text-right px-4 py-2 font-medium">Amount</th>
-                              <th className="text-left px-4 py-2 font-medium">Method</th>
-                              <th className="text-left px-4 py-2 font-medium">Note</th>
-                              <th className="text-center px-3 py-2 font-medium w-12">Action</th>
+                              <th className="px-4 py-3 text-left font-medium w-[10%] min-w-[80px]">Time (Dubai)</th>
+                              <th className="px-4 py-3 text-left font-medium w-[22%] min-w-[160px]">Customer</th>
+                              <th className="px-4 py-3 text-left font-medium w-[15%] min-w-[120px]">Order ID</th>
+                              <th className="px-4 py-3 text-right font-medium w-[13%] min-w-[100px]">Amount</th>
+                              <th className="px-4 py-3 text-center font-medium w-[10%] min-w-[70px]">Method</th>
+                              <th className="px-4 py-3 text-left font-medium w-[20%] min-w-[120px]">Note</th>
+                              <th className="px-4 py-3 text-right font-medium w-[10%] min-w-[50px]">Action</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-gold-50">
@@ -985,22 +990,22 @@ export function CollectionsPage() {
                                   className="hover:bg-gold-50/50 transition-colors"
                                 >
                                   {/* Time */}
-                                  <td className="px-4 py-2.5 text-xs text-muted-foreground whitespace-nowrap font-medium">
+                                  <td className="px-4 py-3.5 align-middle text-xs text-muted-foreground whitespace-nowrap font-medium w-[10%] min-w-[80px]">
                                     {formatDubaiTime(p.created_at)}
                                   </td>
 
                                   {/* Customer with avatar */}
-                                  <td className="px-4 py-2.5">
-                                    <div className="flex items-center gap-2.5">
+                                  <td className="px-4 py-3.5 align-middle w-[22%] min-w-[160px]">
+                                    <div className="flex items-center gap-2 min-w-0">
                                       <div className="w-7 h-7 rounded-full bg-gold-100 text-gold-900 flex items-center justify-center text-xs font-bold shrink-0">
                                         {initial}
                                       </div>
-                                      <div className="min-w-0">
-                                        <div className="font-semibold text-gold-900 text-xs truncate">
+                                      <div className="min-w-0 flex flex-col justify-center">
+                                        <div className="font-semibold text-gold-900 text-xs truncate leading-tight">
                                           {custName}
                                         </div>
                                         {custMobile && (
-                                          <div className="text-[11px] text-muted-foreground truncate">
+                                          <div className="text-[11px] text-muted-foreground truncate leading-tight mt-0.5">
                                             {custMobile}
                                           </div>
                                         )}
@@ -1009,7 +1014,7 @@ export function CollectionsPage() {
                                   </td>
 
                                   {/* Order ID (Clickable) */}
-                                  <td className="px-4 py-2.5 whitespace-nowrap">
+                                  <td className="px-4 py-3.5 align-middle whitespace-nowrap w-[15%] min-w-[120px]">
                                     {orderId ? (
                                       <button
                                         type="button"
@@ -1019,32 +1024,36 @@ export function CollectionsPage() {
                                         #{orderId}
                                       </button>
                                     ) : (
-                                      <span className="text-muted-foreground text-xs">—</span>
+                                      <span className="text-muted-foreground text-xs font-mono">—</span>
                                     )}
                                   </td>
 
                                   {/* Amount green +AED */}
-                                  <td className="px-4 py-2.5 text-right whitespace-nowrap font-bold text-emerald-600 text-xs">
+                                  <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap font-bold text-green-600 text-xs w-[13%] min-w-[100px]">
                                     +{fmtAED(p.amount)}
                                   </td>
 
                                   {/* Method badge */}
-                                  <td className="px-4 py-2.5 whitespace-nowrap">
-                                    <PaymentMethodBadge method={method} />
+                                  <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap w-[10%] min-w-[70px]">
+                                    <div className="flex items-center justify-center">
+                                      <PaymentMethodBadge method={method} />
+                                    </div>
                                   </td>
 
                                   {/* Note */}
-                                  <td className="px-4 py-2.5 text-xs text-muted-foreground max-w-[200px] truncate">
-                                    {p.note || "—"}
+                                  <td className="px-4 py-3.5 align-middle text-xs text-muted-foreground truncate w-[20%] min-w-[120px] max-w-[200px]">
+                                    <span className="block truncate" title={p.note || ""}>
+                                      {p.note || "—"}
+                                    </span>
                                   </td>
 
                                   {/* View Order icon */}
-                                  <td className="px-3 py-2.5 text-center">
+                                  <td className="px-4 py-3.5 align-middle text-right w-[10%] min-w-[50px]">
                                     {orderId && (
                                       <Button
                                         size="icon"
                                         variant="ghost"
-                                        className="w-7 h-7 text-gold-700 hover:text-gold-900 hover:bg-gold-100"
+                                        className="w-7 h-7 text-gold-700 hover:text-gold-900 hover:bg-gold-100 inline-flex items-center justify-center ml-auto"
                                         onClick={() => setSelectedOrderId(orderId)}
                                         title="View Order Details"
                                       >

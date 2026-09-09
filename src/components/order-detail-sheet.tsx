@@ -178,11 +178,16 @@ export function OrderDetailSheet({
     }
 
     toast.success(pType === "refund" ? "Refund recorded" : "Payment added");
+    const custName = (order as any)?.customers?.name || "Customer";
+    const paymentTitle = pType === "refund"
+      ? `Refund -${fmtAED(n)} for #${order.id} (${custName})${note ? ` - ${note}` : ""}`
+      : `Payment +${fmtAED(n)} for #${order.id} (${custName})${note ? ` - ${note}` : ""}`;
+    const paymentDesc = `Customer: ${custName}, Amount: ${fmtAED(n)}, Type: ${pType === "refund" ? "Refund" : "Payment"}${note ? `, Note: ${note}` : ""}`;
     await logActivity(
       "payment_added",
-      pType === "refund" ? "Refund issued" : "Payment received",
+      paymentTitle,
       order.id,
-      `${fmtAED(n)} · ${pType === "refund" ? "Refund" : "Payment recorded"}`,
+      paymentDesc,
     );
     resetPaymentForm();
     qc.invalidateQueries({ queryKey: ["orders-list"] });
@@ -205,7 +210,13 @@ export function OrderDetailSheet({
       status: v,
     });
     toast.success(`Order status updated to ${v}`);
-    await logActivity("status_changed", "Order status updated", order.id, `${order.order_status} → ${v}`);
+    const custName = (order as any)?.customers?.name || "Customer";
+    await logActivity(
+      "status_changed",
+      `Status changed for #${order.id} (${custName}): ${order.order_status} → ${v}`,
+      order.id,
+      `${order.order_status} → ${v}`,
+    );
     qc.invalidateQueries({ queryKey: ["orders-list"] });
     qc.invalidateQueries({ queryKey: ["order", order.id] });
     qc.invalidateQueries({ queryKey: ["order-history", order.id] });
@@ -222,7 +233,13 @@ export function OrderDetailSheet({
       .eq("id", order.id);
     if (error) return toast.error(error.message);
     toast.success("Order moved to Recycle Bin");
-    await logActivity("order_deleted", "Order moved to Recycle Bin", order.id, `Order deleted by admin`);
+    const custName = (order as any)?.customers?.name || "Customer";
+    await logActivity(
+      "order_deleted",
+      `Order #${order.id} for ${custName} moved to Recycle Bin`,
+      order.id,
+      `Order deleted by admin`,
+    );
     setDeleteOrderOpen(false);
     onOpenChange(false);
     qc.invalidateQueries({ queryKey: ["orders-list"] });
@@ -250,7 +267,13 @@ export function OrderDetailSheet({
       .eq("id", order.id);
     if (uErr) return toast.error(uErr.message);
     toast.success("Payment record removed");
-    await logActivity("payment_deleted", "Payment record removed", order.id, `${fmtAED(Number(p.amount))} entry deleted`);
+    const custName = (order as any)?.customers?.name || "Customer";
+    await logActivity(
+      "payment_deleted",
+      `Payment removed for #${order.id} (${custName}) - ${fmtAED(Number(p.amount))}`,
+      order.id,
+      `${fmtAED(Number(p.amount))} entry deleted`,
+    );
     setDeletePayment(null);
     qc.invalidateQueries({ queryKey: ["orders-list"] });
     qc.invalidateQueries({ queryKey: ["order", order.id] });

@@ -16,7 +16,7 @@ export const fmtDate = (d?: string | Date | null) => {
   try {
     const date = typeof d === "string" ? parseISO(d) : d;
     if (!isValid(date) || isNaN(date.getTime())) return "—";
-    return format(date, "dd/MM/yyyy");
+    return format(date, "dd MMM, yyyy");
   } catch {
     return "—";
   }
@@ -131,7 +131,7 @@ export function fmtDubaiDateWithRelative(dateStr?: string | null, timeSource?: s
     }
 
     const d = isOnlyDate ? parseISO(targetDateStr) : new Date(dateStr);
-    return timeStr ? `${format(d, "dd/MM/yyyy")}, ${timeStr}` : format(d, "dd/MM/yyyy");
+    return timeStr ? `${format(d, "dd MMM, yyyy")}, ${timeStr}` : format(d, "dd MMM, yyyy");
   } catch {
     return fmtDate(dateStr);
   }

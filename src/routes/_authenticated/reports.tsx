@@ -23,7 +23,36 @@ export const Route = createFileRoute("/_authenticated/reports")({
   component: ReportsPage,
 });
 
-const CAT_COLORS = ["#c19e65", "#7c3aed", "#16a34a", "#dc2626", "#0ea5e9", "#f59e0b", "#ec4899", "#14b8a6", "#8b5cf6"];
+const EXPENSE_CAT_COLORS: Record<string, string> = {
+  "Raw Materials & Fabric": "#8B5A2B",
+  "Fixing Man": "#C9A86A",
+  "Transport & Delivery": "#D4B896",
+  "Marketing & Advertising": "#A8C3A0",
+  "Rent / Showroom": "#7c3aed",
+  "Staff Salary": "#0ea5e9",
+  "Tools & Equipment": "#f59e0b",
+  "Labour": "#ec4899",
+  "Others": "#94a3b8",
+};
+
+const DEFAULT_FALLBACK_COLORS = [
+  "#8B5A2B",
+  "#C9A86A",
+  "#D4B896",
+  "#A8C3A0",
+  "#7c3aed",
+  "#0ea5e9",
+  "#f59e0b",
+  "#ec4899",
+  "#14b8a6",
+  "#94a3b8",
+];
+
+function getCategoryColor(cat: string, index: number = 0): string {
+  if (EXPENSE_CAT_COLORS[cat]) return EXPENSE_CAT_COLORS[cat];
+  if (cat.startsWith("Others")) return "#94a3b8";
+  return DEFAULT_FALLBACK_COLORS[index % DEFAULT_FALLBACK_COLORS.length];
+}
 
 function ReportsPage() {
   const months = useMemo(() => listMonthsSince(2025), []);
@@ -563,17 +592,17 @@ function ReportsPage() {
                 <div className="text-2xl md:text-3xl font-bold text-red-600 mt-2">
                   {fmtAED(allTimeDue.data?.total ?? 0)}
                 </div>
-                <div className="grid grid-cols-3 gap-2 mt-4">
-                  <div className="rounded-lg border border-gold-100 p-2.5">
-                    <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Customers with due</div>
+                <div className="grid grid-cols-3 gap-2 mt-4 items-stretch">
+                  <div className="rounded-lg border border-gold-100 py-2 px-2.5 md:p-2.5 min-h-[60px] md:min-h-0 flex flex-col justify-center items-start">
+                    <div className="text-[9px] uppercase tracking-wider text-muted-foreground leading-tight min-h-[26px] md:min-h-0 flex items-start">Customers with due</div>
                     <div className="text-base font-bold text-gold-900 mt-0.5">{allTimeDue.data?.uniqueCustomers ?? 0}</div>
                   </div>
-                  <div className="rounded-lg border border-gold-100 p-2.5">
-                    <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Highest single due</div>
+                  <div className="rounded-lg border border-gold-100 py-2 px-2.5 md:p-2.5 min-h-[60px] md:min-h-0 flex flex-col justify-center items-start">
+                    <div className="text-[9px] uppercase tracking-wider text-muted-foreground leading-tight min-h-[26px] md:min-h-0 flex items-start">Highest single due</div>
                     <div className="text-base font-bold text-red-600 mt-0.5">{fmtAED(allTimeDue.data?.highestDue ?? 0)}</div>
                   </div>
-                  <div className="rounded-lg border border-gold-100 p-2.5">
-                    <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Oldest pending</div>
+                  <div className="rounded-lg border border-gold-100 py-2 px-2.5 md:p-2.5 min-h-[60px] md:min-h-0 flex flex-col justify-center items-start">
+                    <div className="text-[9px] uppercase tracking-wider text-muted-foreground leading-tight min-h-[26px] md:min-h-0 flex items-start">Oldest pending</div>
                     <div className="text-base font-bold text-amber-600 mt-0.5">{allTimeDue.data?.oldestDays ?? 0} days</div>
                   </div>
                 </div>
@@ -618,7 +647,7 @@ function ReportsPage() {
           yearData={yearData.data ?? []}
           headerBadge={
             <span className={`text-xs font-medium px-3 py-1 rounded-full ${isLoss ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"}`}>
-              {isLoss ? "Loss Month ⚠️" : "Profitable Month ✅"}
+              {isLoss ? "Loss Month ⚠️" : "Profitable Month"}
             </span>
           }
         />
@@ -695,35 +724,89 @@ function ReportsPage() {
 
         {/* Expense Breakdown */}
         <div className="bg-white border border-gold-100 rounded-xl p-4 md:p-5">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <div className="font-semibold text-gold-900">Expense Breakdown — {monthLabel}</div>
-              <div className="text-xs text-muted-foreground">Category wise spending analysis</div>
+          <div className="flex items-start justify-between gap-[10px] mb-3.5">
+            <div className="flex-1 min-w-0">
+              <div className="font-semibold text-gold-900 text-xs min-[400px]:text-sm sm:text-base leading-snug">
+                Expense Breakdown — {monthLabel}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">Category wise spending analysis</div>
             </div>
-            <span className="text-xs font-semibold bg-gold-50 text-gold-700 border border-gold-200 px-3 py-1 rounded-full">
+            {/* Desktop badge */}
+            <span className="hidden md:inline-flex text-xs font-semibold bg-gold-50 text-gold-700 border border-gold-200 px-3 py-1 rounded-full whitespace-nowrap shrink-0">
               Total {fmtAED(expensesQ.data?.total ?? 0)}
             </span>
+            {/* Mobile badge */}
+            <span
+              className="md:hidden inline-flex items-center whitespace-nowrap shrink-0 rounded-full bg-[#FFFBF2] border border-gold-100 text-gold-700 font-semibold text-[11px]"
+              style={{ padding: "4px 10px", lineHeight: 1, whiteSpace: "nowrap" }}
+            >
+              {fmtAED(expensesQ.data?.total ?? 0).replace(" ", "\u00A0")} total
+            </span>
           </div>
+
           {Object.keys(expensesQ.data?.byCat ?? {}).length === 0 ? (
             <div className="text-sm text-muted-foreground py-4 text-center">No expenses recorded.</div>
           ) : (
-            <div>
-              <div className="md:hidden text-[10px] text-muted-foreground text-center mb-2">← Swipe to see more →</div>
-              <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
-                <div className="min-w-[600px]">
-                  <table className="w-full text-sm">
-                    <thead className="sticky top-0 bg-white z-10">
-                      <tr className="bg-gold-50 text-[10px] uppercase tracking-wider text-muted-foreground">
-                        <th className="text-left px-3 py-2 font-medium">Category</th>
-                        <th className="text-right px-3 py-2 font-medium">Amount</th>
-                        <th className="text-right px-3 py-2 font-medium">% Share</th>
-                        <th className="text-left px-3 py-2 font-medium w-[35%]">Distribution</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(expensesQ.data!.byCat).sort((a, b) => b[1] - a[1]).map(([cat, amt], i) => {
+            <>
+              {/* Mobile version (demo style) */}
+              <div className="md:hidden space-y-3">
+                {Object.entries(expensesQ.data!.byCat)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([cat, amt], i) => {
+                    const p = expensesQ.data!.total ? (amt / expensesQ.data!.total) * 100 : 0;
+                    const color = getCategoryColor(cat, i);
+                    return (
+                      <div key={cat} className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span
+                              className="rounded-full shrink-0"
+                              style={{ backgroundColor: color, width: "8px", height: "8px" }}
+                            />
+                            <span
+                              className="font-semibold text-gold-950 truncate text-[12.5px] leading-tight"
+                              title={cat}
+                            >
+                              {cat}
+                            </span>
+                          </div>
+                          <div className="flex items-baseline gap-1.5 shrink-0 whitespace-nowrap">
+                            <span className="font-bold text-gold-900 text-[12.5px] leading-tight">
+                              {fmtAED(amt).replace(" ", "\u00A0")}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground leading-tight">
+                              ({p.toFixed(1)}%)
+                            </span>
+                          </div>
+                        </div>
+                        <div className="h-[6px] w-full rounded-full bg-[#F0E6D6] overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(100, Math.max(0, p))}%`, backgroundColor: color }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+
+              {/* Desktop version (exact table kept as is) */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-white z-10">
+                    <tr className="bg-gold-50 text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <th className="text-left px-3 py-2 font-medium">Category</th>
+                      <th className="text-right px-3 py-2 font-medium">Amount</th>
+                      <th className="text-right px-3 py-2 font-medium">% Share</th>
+                      <th className="text-left px-3 py-2 font-medium w-[35%]">Distribution</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(expensesQ.data!.byCat)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([cat, amt], i) => {
                         const p = expensesQ.data!.total ? (amt / expensesQ.data!.total) * 100 : 0;
-                        const color = CAT_COLORS[i % CAT_COLORS.length];
+                        const color = getCategoryColor(cat, i);
                         return (
                           <tr key={cat} className="border-t border-gold-50">
                             <td className="px-3 py-2 text-gold-900">{cat}</td>
@@ -737,28 +820,34 @@ function ReportsPage() {
                           </tr>
                         );
                       })}
-                      <tr className="border-t-2 border-gold-200 bg-gold-50/40">
-                        <td className="px-3 py-2 font-bold text-gold-900">TOTAL</td>
-                        <td className="px-3 py-2 text-right font-bold text-gold-700">{fmtAED(expensesQ.data!.total)}</td>
-                        <td className="px-3 py-2 text-right font-bold">100%</td>
-                        <td className="px-3 py-2"></td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                    <tr className="border-t-2 border-gold-200 bg-gold-50/40">
+                      <td className="px-3 py-2 font-bold text-gold-900">TOTAL</td>
+                      <td className="px-3 py-2 text-right font-bold text-gold-700">{fmtAED(expensesQ.data!.total)}</td>
+                      <td className="px-3 py-2 text-right font-bold">100%</td>
+                      <td className="px-3 py-2"></td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-            </div>
+            </>
           )}
         </div>
 
         {/* Monthly Profit History */}
         <div className="bg-white border border-gold-100 rounded-xl p-4 md:p-5">
-          <div className="flex items-start justify-between mb-2">
-            <div>
-              <div className="font-semibold text-gold-900">Monthly Profit History — {selectedDate.getFullYear()}</div>
-              <div className="text-xs text-muted-foreground">Collection vs Expenses vs Net Profit per month</div>
+          <div className="flex items-start justify-between gap-3 mb-2">
+            <div className="max-w-[60%] sm:max-w-none">
+              <div className="font-semibold text-gold-900 leading-tight">Monthly Profit History — {selectedDate.getFullYear()}</div>
+              <div className="text-xs text-muted-foreground leading-tight mt-0.5">Collection vs Expenses vs Net Profit per month</div>
             </div>
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            {/* Mobile legend (<640px) */}
+            <div className="flex sm:hidden flex-col gap-1.5 items-start shrink-0 text-muted-foreground">
+              <span className="flex items-center gap-1.5 text-[11px]"><span className="w-2 h-2 rounded-full bg-green-500 shrink-0"></span>Collection</span>
+              <span className="flex items-center gap-1.5 text-[11px]"><span className="w-2 h-2 rounded-full bg-red-500 shrink-0"></span>Expenses</span>
+              <span className="flex items-center gap-1.5 text-[11px]"><span className="w-2 h-2 rounded-full bg-purple-500 shrink-0"></span>Net Profit</span>
+            </div>
+            {/* Desktop legend (md+) */}
+            <div className="hidden sm:flex items-center gap-3 text-xs text-muted-foreground shrink-0">
               <Dot color="#16a34a" /> Collection
               <Dot color="#ef4444" /> Expenses
               <Dot color="#7c3aed" /> Net Profit
@@ -770,10 +859,10 @@ function ReportsPage() {
                 <div className="flex items-center justify-center h-full text-xs text-muted-foreground">No profit history data available</div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={yearData.data ?? []} barGap={2} barCategoryGap="18%">
+                  <BarChart data={yearData.data ?? []} barGap={2} barCategoryGap="18%" margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
                     <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
+                    <YAxis width={65} tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
                     <Tooltip formatter={(v: number) => fmtAED(v)} />
                     <Bar dataKey="collection" fill="#16a34a" radius={[3, 3, 0, 0]} />
                     <Bar dataKey="expenses" fill="#ef4444" radius={[3, 3, 0, 0]} />

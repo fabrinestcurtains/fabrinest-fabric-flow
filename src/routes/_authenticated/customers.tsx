@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { supabase, type Customer, type Order, type Payment, type OrderStatusHistory, ACTIVE_ORDERS_FILTER, sanitizeSearch } from "@/lib/supabase";
+import { supabase, logActivity, type Customer, type Order, type Payment, type OrderStatusHistory, ACTIVE_ORDERS_FILTER, sanitizeSearch } from "@/lib/supabase";
 import { fmtAED, fmtDate, fmtDateTime, dueOf, ONGOING_STATUSES, isOngoing } from "@/lib/format";
 import { OrderStatusBadge } from "@/components/status-badges";
 import { RoomsDisplay } from "@/components/rooms-editor";
@@ -282,7 +282,7 @@ function CustomersPage() {
   );
 }
 
-function CustomerDetail({
+export function CustomerDetail({
   customerId, open, onOpenChange,
 }: { customerId: string | null; open: boolean; onOpenChange: (v: boolean) => void }) {
   const qc = useQueryClient();
@@ -486,6 +486,12 @@ function CustomerDetail({
                         setSavingCust(false);
                         if (error) return toast.error(error.message);
                         toast.success("Customer updated");
+                        await logActivity(
+                          "customer_edited",
+                          `Customer updated: ${eName.trim()}`,
+                          data.customer.id,
+                          `Mobile: ${eMobile.trim()}${eAddress.trim() ? `, Address: ${eAddress.trim()}` : ""}`,
+                        );
                         setEditingCustomer(false);
                         qc.invalidateQueries({ queryKey: ["customers-paged"] });
                         qc.invalidateQueries({ queryKey: ["customer-detail", data.customer.id] });

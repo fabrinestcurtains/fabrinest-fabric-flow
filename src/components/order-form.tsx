@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase, logActivity, type Customer, type Order, type OrderStatus, type PaymentStatus, type OrderRoom } from "@/lib/supabase";
-import { computePaymentStatus, dueOf } from "@/lib/format";
+import { computePaymentStatus, dueOf, fmtAED } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -166,11 +166,18 @@ export function OrderForm({
         payment_status: paymentStatus,
       };
 
+      const customerName = name.trim() || lockedCustomer?.name || (initialOrder as any)?.customers?.name || "Customer";
+
       if (editing && initialOrder) {
         const { error } = await supabase.from("orders").update(payload).eq("id", initialOrder.id);
         if (error) throw error;
         toast.success("Order updated");
-        await logActivity("order_edited", "Order edited", initialOrder.id, `Order details updated`);
+        await logActivity(
+          "order_edited",
+          `Order #${initialOrder.id} edited for ${customerName} - ${fmtAED(totalNum)}`,
+          initialOrder.id,
+          `Customer: ${customerName}, Total: ${totalNum}, Advance: ${advNum}`,
+        );
         onDone?.(initialOrder.id);
       } else {
         let id = orderId;
@@ -227,9 +234,9 @@ export function OrderForm({
         toast.success("Order created");
         await logActivity(
           "order_created",
-          "New order created",
+          `New order #${id} for ${customerName} - ${fmtAED(totalNum)}`,
           id,
-          `Customer: ${name || lockedCustomer?.name || "existing"} · AED ${totalNum.toLocaleString()}`,
+          `Customer: ${customerName}, Total: ${totalNum}, Advance: ${advNum}`,
         );
         onDone?.(id);
       }
