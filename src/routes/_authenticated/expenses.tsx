@@ -2,9 +2,10 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Plus, Pencil, Trash2, Search, Wallet, Eye, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, Search, Inbox, Wallet, Eye, ChevronDown, ChevronRight } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { format, startOfMonth, endOfMonth, subMonths, subDays, parseISO, isValid } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -66,18 +67,25 @@ function getCategoryColor(cat: string, index: number = 0): string {
 
 function formatDateHeader(dateStr: string): string {
   try {
-    const d = parseISO(dateStr);
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim());
+    const d = isDateOnly ? parseISO(dateStr.trim()) : new Date(dateStr);
     if (!isValid(d)) return dateStr;
+    const formattedDate = formatInTimeZone(d, "Asia/Dubai", "dd MMM, yyyy");
+
     const dNow = getDubaiNow();
     const todayStr = format(dNow, "yyyy-MM-dd");
     const yesterdayStr = format(subDays(dNow, 1), "yyyy-MM-dd");
-    if (dateStr === todayStr) {
-      return `Today — ${format(d, "dd MMM, yyyy")}`;
+    const targetDateStr = isDateOnly
+      ? dateStr.trim()
+      : formatInTimeZone(d, "Asia/Dubai", "yyyy-MM-dd");
+
+    if (targetDateStr === todayStr) {
+      return `Today — ${formattedDate}`;
     }
-    if (dateStr === yesterdayStr) {
-      return `Yesterday — ${format(d, "dd MMM, yyyy")}`;
+    if (targetDateStr === yesterdayStr) {
+      return `Yesterday — ${formattedDate}`;
     }
-    return format(d, "dd MMM, yyyy");
+    return formattedDate;
   } catch {
     return dateStr;
   }
@@ -220,7 +228,13 @@ function ExpensesPage() {
     const map = new Map<string, { totalAmount: number; items: Expense[] }>();
 
     for (const item of paged) {
-      const d = item.expense_date || "Unknown";
+      const rawDate = item.expense_date;
+      const date = rawDate ? new Date(rawDate) : null;
+      const d =
+        date && isValid(date)
+          ? formatInTimeZone(date, "Asia/Dubai", "yyyy-MM-dd")
+          : rawDate || "Unknown";
+
       if (!map.has(d)) {
         map.set(d, { totalAmount: 0, items: [] });
       }
@@ -450,7 +464,24 @@ function ExpensesPage() {
           </div>
         ) : total === 0 ? (
           <div className="bg-white border border-gold-100 rounded-xl p-8">
-            <EmptyState icon={<Wallet className="w-10 h-10 text-gold-400" />} title="No expenses for this month" />
+            <EmptyState
+              icon={
+                debouncedQ ? (
+                  <Search className="w-10 h-10 text-gold-400" />
+                ) : (
+                  <Inbox className="w-10 h-10 text-gold-400" />
+                )
+              }
+              title={debouncedQ ? "No expenses found matching your search" : "No expenses for this month"}
+              description={debouncedQ ? "Try clearing your search keyword or ID." : undefined}
+              action={
+                debouncedQ ? (
+                  <Button variant="outline" size="sm" onClick={() => setQ("")}>
+                    Reset Search
+                  </Button>
+                ) : undefined
+              }
+            />
           </div>
         ) : (
           <>

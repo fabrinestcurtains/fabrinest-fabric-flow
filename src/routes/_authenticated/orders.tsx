@@ -50,11 +50,23 @@ function OrdersPage() {
       const s = sanitizeSearch(debouncedQ);
       let query;
       if (s) {
+        const { data: matchingCustomers } = await supabase
+          .from("customers")
+          .select("id")
+          .or(`name.ilike.%${s}%,mobile.ilike.%${s}%`)
+          .limit(50);
+        const customerIds = matchingCustomers?.map((c) => c.id) || [];
+
         query = supabase
           .from("orders")
-          .select("*, customers!inner(*)", { count: "exact" })
-          .or(ACTIVE_ORDERS_FILTER)
-          .or(`id.ilike.%${s}%,customers.name.ilike.%${s}%,customers.mobile.ilike.%${s}%`);
+          .select("*, customers(*)", { count: "exact" })
+          .or(ACTIVE_ORDERS_FILTER);
+
+        if (customerIds.length > 0) {
+          query = query.or(`id.ilike.%${s}%,customer_id.in.(${customerIds.join(",")})`);
+        } else {
+          query = query.ilike("id", `%${s}%`);
+        }
       } else {
         query = supabase
           .from("orders")
@@ -141,7 +153,6 @@ function OrdersPage() {
           <div className="space-y-2">
             {paged.map((o) => {
               const due = dueOf(o);
-              const hasDiscount = Number(o.discount_amount) > 0;
               return (
                 <button
                   key={o.id}
@@ -156,9 +167,6 @@ function OrdersPage() {
                     </div>
                     <div className="text-right shrink-0">
                       <div className="font-bold text-gold-900">{fmtAED(o.total_amount)}</div>
-                      {hasDiscount && (
-                        <div className="text-[11px] text-gold-600 font-medium">Discount: {fmtAED(o.discount_amount)}</div>
-                      )}
                       <div className="flex gap-1 mt-1 justify-end flex-wrap">
                         <OrderStatusBadge status={o.order_status} />
                         <PaymentStatusBadge status={o.order_status === "Cancelled" ? "Cancelled" : o.payment_status} />

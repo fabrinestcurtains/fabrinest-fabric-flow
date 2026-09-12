@@ -106,7 +106,9 @@ export function RoomsEditor({
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <ClipboardList className="w-4 h-4 text-gold-700" />
-        <div className="font-semibold text-gold-900">Order Details</div>
+        <div className="font-semibold text-gold-900">
+          Order Details{value.length > 0 ? ` — ${value.length} room${value.length !== 1 ? "s" : ""}` : ""}
+        </div>
       </div>
 
       {value.map((room) => (
@@ -122,30 +124,42 @@ export function RoomsEditor({
                     if (e.key === "Enter") { e.preventDefault(); saveEdit(); }
                     if (e.key === "Escape") setEditingId(null);
                   }}
-                  className="h-8 bg-white"
+                  className="h-8 bg-white text-foreground"
                 />
-                <Button type="button" size="sm" onClick={saveEdit} className="h-8 bg-gold-700 hover:bg-gold-800 text-white">
+                <Button type="button" size="sm" onClick={saveEdit} className="h-8 bg-white/20 hover:bg-white/30 text-white">
                   <Check className="w-4 h-4" />
                 </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingId(null)} className="h-8">
+                <Button type="button" size="sm" variant="ghost" onClick={() => setEditingId(null)} className="h-8 text-white hover:bg-white/20 hover:text-white">
                   <X className="w-4 h-4" />
                 </Button>
               </div>
             ) : (
               <>
                 <div className="flex items-center gap-2 min-w-0">
-                  <DoorOpen className="w-4 h-4 text-gold-900 shrink-0" />
-                  <span className="font-semibold text-gold-900 truncate">{room.name}</span>
-                  <span className="text-[10px] uppercase tracking-wider bg-white/70 text-gold-800 rounded-full px-2 py-0.5 shrink-0">
+                  <DoorOpen className="w-4 h-4 text-white shrink-0" />
+                  <span className="font-semibold text-white truncate">{room.name}</span>
+                  <span className="text-[10px] uppercase tracking-wider bg-white/20 text-white rounded-full px-2 py-0.5 shrink-0 font-medium">
                     {room.windows.length} window{room.windows.length !== 1 ? "s" : ""}
                   </span>
                 </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button type="button" onClick={() => startEdit(room)} className="p-1.5 rounded hover:bg-white/50" aria-label="Rename room">
-                    <Pencil className="w-4 h-4 text-gold-900" />
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => startEdit(room)}
+                    className="w-7 h-7 rounded-md bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                    aria-label="Rename room"
+                    title="Rename room"
+                  >
+                    <Pencil className="w-4 h-4 text-white" />
                   </button>
-                  <button type="button" onClick={() => deleteRoom(room.id)} className="p-1.5 rounded hover:bg-red-100" aria-label="Delete room">
-                    <Trash2 className="w-4 h-4 text-red-600" />
+                  <button
+                    type="button"
+                    onClick={() => deleteRoom(room.id)}
+                    className="w-7 h-7 rounded-md bg-white/20 hover:bg-red-500/20 flex items-center justify-center transition-colors group"
+                    aria-label="Delete room"
+                    title="Delete room"
+                  >
+                    <Trash2 className="w-4 h-4 text-white group-hover:text-red-200" />
                   </button>
                 </div>
               </>
@@ -217,10 +231,11 @@ export function RoomsEditor({
                             <button
                               type="button"
                               onClick={() => deleteWindow(room.id, w.id)}
-                              className="p-1 rounded hover:bg-red-50"
+                              className="w-7 h-7 rounded-md hover:bg-stone-100 flex items-center justify-center text-stone-500 hover:text-stone-800 transition-colors ml-auto"
                               aria-label="Delete window"
+                              title="Delete window"
                             >
-                              <Trash2 className="w-4 h-4 text-red-500" />
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           )}
                         </td>
@@ -233,16 +248,16 @@ export function RoomsEditor({
             <button
               type="button"
               onClick={() => addWindow(room.id)}
-              className="w-full text-xs py-1.5 rounded border border-dashed border-gold-300 text-gold-700 hover:bg-gold-50 flex items-center justify-center gap-1"
+              className="w-full h-9 border border-dashed border-gold-200 rounded-lg bg-white hover:bg-gold-50 text-gold-600 font-medium text-xs flex items-center justify-center gap-1.5 transition-colors"
             >
-              <Plus className="w-3 h-3" /> Add Window Row
+              <Plus className="w-3.5 h-3.5" /> Add Window Row
             </button>
           </div>
         </div>
       ))}
 
       {drafting ? (
-        <div className={`rounded-lg border-2 border-dashed ${draftErr ? "border-red-400" : "border-gold-300"} p-2 flex items-center gap-2 bg-gold-50`}>
+        <div className={`rounded-xl border-2 border-dashed ${draftErr ? "border-red-400" : "border-gold-300"} p-2.5 flex items-center gap-2 bg-gold-50/50`}>
           <Input
             ref={draftRef}
             value={draftName}
@@ -252,7 +267,7 @@ export function RoomsEditor({
               if (e.key === "Escape") cancelDraft();
             }}
             placeholder="e.g. Living Room, Bedroom, Office..."
-            className={`h-9 bg-white ${draftErr ? "border-red-400" : ""}`}
+            className={`h-9 bg-white ${draftErr ? "border-red-400" : "border-gold-200"}`}
           />
           <Button type="button" size="sm" onClick={confirmDraft} className="h-9 gold-gradient">OK</Button>
           <Button type="button" size="sm" variant="ghost" onClick={cancelDraft} className="h-9">
@@ -263,7 +278,7 @@ export function RoomsEditor({
         <button
           type="button"
           onClick={() => setDrafting(true)}
-          className="w-full py-2.5 rounded-lg border-2 border-dashed border-gold-300 text-gold-700 hover:bg-gold-50 font-medium flex items-center justify-center gap-2"
+          className="w-full h-11 border-2 border-dashed border-gold-300 rounded-xl bg-gold-50/50 hover:bg-gold-50 text-gold-700 font-medium text-sm flex items-center justify-center gap-2 transition-colors"
         >
           <Plus className="w-4 h-4" /> Add Room
         </button>

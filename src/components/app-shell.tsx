@@ -30,7 +30,7 @@ const dubaiTime = () =>
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, exact: true },
-  { to: "/orders", label: "Order History", icon: ClipboardList },
+  { to: "/orders", label: "Orders", icon: ClipboardList },
   { to: "/collections", label: "Collections", icon: CreditCard },
   { to: "/customers", label: "Customers", icon: Users },
   { to: "/expenses", label: "Expenses", icon: Wallet },
@@ -77,8 +77,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isActive = (to: string, exact?: boolean) => (exact ? path === to : path === to || path.startsWith(to + "/"));
 
   const Sidebar = (
-    <aside className="sidebar-gradient text-white w-[240px] shrink-0 flex flex-col h-full">
-      <div className="px-5 py-6 flex items-center gap-3 border-b border-white/10">
+    <aside className="sidebar-gradient text-white w-[240px] shrink-0 flex flex-col h-screen sticky top-0">
+      <div className="px-5 py-6 flex items-center gap-3 border-b border-white/10 shrink-0">
         {company?.logo_url ? (
           <img src={company.logo_url} alt="Logo" className="w-10 h-10 rounded-lg object-cover bg-white/10" />
         ) : (
@@ -91,7 +91,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="text-[10px] text-gold-300 tracking-[0.2em]">INVENTORY</div>
         </div>
       </div>
-      <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
+      <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto min-h-0">
         {NAV.map((item) => {
           const active = isActive(item.to, item.exact);
           const Icon = item.icon;
@@ -111,7 +111,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           );
         })}
       </nav>
-      <div className="p-4 border-t border-white/10">
+      <div className="p-4 border-t border-white/10 shrink-0 sticky bottom-0 bg-[#3D2314] mt-auto">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-9 h-9 rounded-full gold-gradient flex items-center justify-center text-sm font-bold">
             A
@@ -131,9 +131,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     </aside>
   );
 
+  const currentNav =
+    NAV.find((n) => path.startsWith(n.to) && n.to !== "/") ||
+    (path === "/" ? NAV[0] : null);
+  const Icon = currentNav?.icon;
+
   return (
     <div className="min-h-screen flex w-full" style={{ background: "var(--color-gold-50)" }}>
-      <div className="hidden md:flex">{Sidebar}</div>
+      <div className="hidden md:block shrink-0">{Sidebar}</div>
       {open && (
         <div className="fixed inset-0 z-40 md:hidden">
           <div className="absolute inset-0 bg-black/50" onClick={() => setOpen(false)} />
@@ -152,9 +157,12 @@ export function AppShell({ children }: { children: ReactNode }) {
               {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
             <div>
-              <h1 className="font-bold text-gold-900 text-base md:text-lg leading-tight">{titleFor(path)}</h1>
+              <h1 className="font-bold text-gold-900 text-base md:text-lg leading-tight flex items-center gap-2">
+                {Icon && <Icon className="w-4 h-4 md:w-5 md:h-5 text-gold-700" />}
+                {titleFor(path)}
+              </h1>
               <p className="text-[11px] text-muted-foreground">
-                {format(new Date(), "dd/MM/yyyy")} · Dubai, UAE
+                {format(new Date(), "dd MMM, yyyy")} · Dubai, UAE
               </p>
             </div>
           </div>

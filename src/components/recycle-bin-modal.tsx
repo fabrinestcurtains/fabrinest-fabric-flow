@@ -103,7 +103,7 @@ export function RecycleBinModal({
           </>
         )}
         <p className="text-xs italic text-muted-foreground text-center pt-2">
-          Restored orders will reappear in Order History
+          Restored orders will reappear in Orders
         </p>
       </DialogContent>
     </Dialog>

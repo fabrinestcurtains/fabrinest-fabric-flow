@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 export function DatePickerField({
   value,
   onChange,
-  placeholder = "DD/MM/YYYY",
+  placeholder = "DD MMM, YYYY",
   className,
   id,
   disabled,
@@ -39,7 +39,7 @@ export function DatePickerField({
           )}
         >
           <CalendarIcon className="w-4 h-4 mr-2 shrink-0" />
-          {dateObj ? format(dateObj, "dd/MM/yyyy") : <span>{placeholder}</span>}
+          {dateObj ? format(dateObj, "dd MMM, yyyy") : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">

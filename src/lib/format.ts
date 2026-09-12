@@ -14,9 +14,14 @@ export const fmtAEDShort = (n: number) => {
 export const fmtDate = (d?: string | Date | null) => {
   if (!d) return "—";
   try {
-    const date = typeof d === "string" ? parseISO(d) : d;
+    const date =
+      typeof d === "string"
+        ? /^\d{4}-\d{2}-\d{2}$/.test(d.trim())
+          ? parseISO(d.trim())
+          : new Date(d)
+        : d;
     if (!isValid(date) || isNaN(date.getTime())) return "—";
-    return format(date, "dd MMM, yyyy");
+    return formatInTimeZone(date, "Asia/Dubai", "dd MMM, yyyy");
   } catch {
     return "—";
   }
@@ -27,7 +32,7 @@ export const fmtDateTime = (d?: string | Date | null) => {
   try {
     const date = typeof d === "string" ? parseISO(d) : d;
     if (!isValid(date) || isNaN(date.getTime())) return "—";
-    return format(date, "dd/MM/yyyy HH:mm");
+    return formatInTimeZone(date, "Asia/Dubai", "dd MMM, yyyy, hh:mm a");
   } catch {
     return "—";
   }
@@ -43,27 +48,24 @@ type OrderLike = {
 export const ONGOING_STATUSES: OrderStatus[] = ["New Order", "Measurement Complete", "In Process"];
 export const isOngoing = (s: OrderStatus) => ONGOING_STATUSES.includes(s);
 
-/** Due amount respecting discount + cancelled orders. */
+/** Due amount: total - advance (cancelled orders have 0 due). */
 export const dueOf = (o: OrderLike): number => {
   if (o.order_status === "Cancelled") return 0;
   const t = Number(o.total_amount) || 0;
   const a = Number(o.advance_amount) || 0;
-  const d = Number(o.discount_amount) || 0;
-  return Math.max(0, t - d - a);
+  return Math.max(0, t - a);
 };
 
 export const netOf = (o: OrderLike): number => {
-  const t = Number(o.total_amount) || 0;
-  const d = Number(o.discount_amount) || 0;
-  return Math.max(0, t - d);
+  return Math.max(0, Number(o.total_amount) || 0);
 };
 
 export const computePaymentStatus = (
   total: number,
   advance: number,
-  discount = 0,
+  _discount = 0,
 ): PaymentStatus => {
-  const net = Math.max(0, (Number(total) || 0) - (Number(discount) || 0));
+  const net = Math.max(0, Number(total) || 0);
   const a = Number(advance) || 0;
   if (a <= 0) return "Unpaid";
   if (a >= net) return "Full Paid";
@@ -96,7 +98,11 @@ export function listMonthsSince(startYear = 2025) {
  * Returns current date/time adjusted to Dubai timezone (Asia/Dubai, UTC+4).
  * Note: Server cron jobs in Supabase run in UTC (19:59 UTC = 11:59 PM Dubai).
  */
-export const getDubaiNow = () => new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Dubai" }));
+export const getDubaiNow = () => {
+  const now = new Date();
+  const str = formatInTimeZone(now, "Asia/Dubai", "yyyy-MM-dd'T'HH:mm:ss.SSS");
+  return new Date(str);
+};
 export const dubaiNow = getDubaiNow;
 
 export function fmtDubaiDateWithRelative(dateStr?: string | null, timeSource?: string | null): string {
@@ -130,8 +136,8 @@ export function fmtDubaiDateWithRelative(dateStr?: string | null, timeSource?: s
       return timeStr ? `Yesterday, ${timeStr}` : "Yesterday";
     }
 
-    const d = isOnlyDate ? parseISO(targetDateStr) : new Date(dateStr);
-    return timeStr ? `${format(d, "dd MMM, yyyy")}, ${timeStr}` : format(d, "dd MMM, yyyy");
+    const formattedDate = fmtDate(dateStr);
+    return timeStr ? `${formattedDate}, ${timeStr}` : formattedDate;
   } catch {
     return fmtDate(dateStr);
   }

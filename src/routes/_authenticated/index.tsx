@@ -132,7 +132,11 @@ function Dashboard() {
       const y = new Date().getFullYear();
       const monthlyDue = Array.from({ length: 12 }, (_, i) => {
         const key = `${y}-${String(i + 1).padStart(2, "0")}`;
-        return { label: format(new Date(y, i, 1), "MMM"), due: byMonthMap[key] ?? 0 };
+        return {
+          label: format(new Date(y, i, 1), "MMM"),
+          fullDate: format(new Date(y, i, 1), "dd MMM, yyyy"),
+          due: byMonthMap[key] ?? 0,
+        };
       });
       return { total, uniqueCustomers, highestDue, oldestDays, monthlyDue };
     },
@@ -239,7 +243,7 @@ function Dashboard() {
       {/* Header */}
       <div>
         <h2 className="text-xl md:text-2xl font-bold text-gold-900">{greet}! 👋</h2>
-        <p className="text-sm text-muted-foreground">{format(now, "EEEE, dd/MM/yyyy")}</p>
+        <p className="text-sm text-muted-foreground">{format(now, "EEEE, dd MMM, yyyy")}</p>
       </div>
 
 
@@ -287,6 +291,7 @@ function Dashboard() {
                       <XAxis dataKey="label" tick={{ fontSize: 10, fill: "rgba(255,255,255,0.7)" }} axisLine={false} tickLine={false} />
                       <Line type="monotone" dataKey="due" stroke="#ffffff" strokeWidth={2} dot={{ r: 2, fill: "#fff" }} />
                       <Tooltip
+                        labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || _}
                         formatter={(v: number) => fmtAED(v)}
                         contentStyle={{ background: "#7a1f1f", border: "none", color: "#fff", fontSize: 11 }}
                       />

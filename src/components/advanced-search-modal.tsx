@@ -26,7 +26,8 @@ export function AdvancedSearchModal({
     queryKey: ["adv-order", orderId],
     enabled: false,
     queryFn: async () => {
-      const { data } = await supabase.from("orders").select("*, customers(*)").or(ACTIVE_ORDERS_FILTER).eq("id", orderId).maybeSingle();
+      const cleanId = orderId.trim().replace(/^#+/, "");
+      const { data } = await supabase.from("orders").select("*, customers(*)").or(ACTIVE_ORDERS_FILTER).eq("id", cleanId).maybeSingle();
       return data as Order | null;
     },
   });

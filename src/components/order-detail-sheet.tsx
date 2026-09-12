@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -15,7 +15,7 @@ import {
   supabase, logActivity, type Order, type OrderStatus, type Payment, type PaymentType, type OrderStatusHistory,
 } from "@/lib/supabase";
 import {
-  computePaymentStatus, dueOf, fmtAED, fmtDate, fmtDateTime, displayPaymentStatus, netOf,
+  computePaymentStatus, dueOf, fmtAED, fmtDate, fmtDateTime, displayPaymentStatus,
 } from "@/lib/format";
 import { OrderStatusBadge, PaymentStatusBadge } from "./status-badges";
 import { OrderForm } from "./order-form";
@@ -41,6 +41,15 @@ export function OrderDetailSheet({
   const [note, setNote] = useState("");
   const [deleteOrderOpen, setDeleteOrderOpen] = useState(false);
   const [deletePayment, setDeletePayment] = useState<Payment | null>(null);
+  const [editingFixingMan, setEditingFixingMan] = useState(false);
+  const [fixingManValue, setFixingManValue] = useState("");
+  const [savingFixingMan, setSavingFixingMan] = useState(false);
+
+  useEffect(() => {
+    if (!open) {
+      setEditingFixingMan(false);
+    }
+  }, [open]);
 
   const orderQ = useQuery({
     queryKey: ["order", orderId],
@@ -88,8 +97,6 @@ export function OrderDetailSheet({
   const payments = paymentsQ.data ?? [];
   const history = historyQ.data ?? [];
   const due = order ? dueOf(order) : 0;
-  const net = order ? netOf(order) : 0;
-  const hasDiscount = !!order && Number(order.discount_amount) > 0;
 
   const resetPaymentForm = () => {
     setAmt("");
@@ -141,7 +148,7 @@ export function OrderDetailSheet({
       newAdv = Number(order.advance_amount) + n;
     }
 
-    const status = computePaymentStatus(order.total_amount, newAdv, order.discount_amount);
+    const status = computePaymentStatus(order.total_amount, newAdv);
     let atomicSuccess = false;
 
     try {
@@ -225,6 +232,36 @@ export function OrderDetailSheet({
     qc.invalidateQueries({ queryKey: ["dash-monthly-v3"] });
   };
 
+  const saveFixingMan = async () => {
+    if (!order) return;
+    const value = fixingManValue.trim() || null;
+    const oldVal = order.fixing_man_name || "None";
+    setSavingFixingMan(true);
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ fixing_man_name: value })
+        .eq("id", order.id);
+      if (error) throw error;
+
+      const custName = (order as any)?.customers?.name || "Customer";
+      await logActivity(
+        "order_edited",
+        `Fixing man updated for #${order.id}: ${oldVal} -> ${value || "None"}`,
+        order.id,
+        `Customer: ${custName}, Fixing Man: ${value || "Not assigned"}`,
+      );
+      toast.success("Fixing man updated");
+      setEditingFixingMan(false);
+      qc.invalidateQueries({ queryKey: ["orders-list"] });
+      qc.invalidateQueries({ queryKey: ["order", order.id] });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update fixing man");
+    } finally {
+      setSavingFixingMan(false);
+    }
+  };
+
   const doDeleteOrder = async () => {
     if (!order) return;
     const { error } = await supabase
@@ -257,7 +294,7 @@ export function OrderDetailSheet({
     const newAdv = p.payment_type === "payment"
       ? Math.max(0, Number(order.advance_amount) - delta)
       : Number(order.advance_amount) + delta;
-    const status = computePaymentStatus(order.total_amount, newAdv, order.discount_amount);
+    const status = computePaymentStatus(order.total_amount, newAdv);
 
     const { error: dErr } = await supabase.from("payments").delete().eq("id", p.id);
     if (dErr) return toast.error(dErr.message);
@@ -327,26 +364,11 @@ export function OrderDetailSheet({
               </div>
 
 
-              {hasDiscount ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <StatBox label="TOTAL BILL" value={fmtAED(order.total_amount)} tone="blue" />
-                  <StatBox label="DISCOUNT" value={fmtAED(order.discount_amount)} tone="gold" />
-                  <StatBox label="NET" value={fmtAED(net)} tone="blue" />
-                  <StatBox label="TOTAL PAID" value={fmtAED(order.advance_amount)} tone="green" />
-                  <StatBox
-                    label="DUE"
-                    value={fmtAED(due)}
-                    tone={due > 0 ? "red" : "green"}
-                    className="col-span-2"
-                  />
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-2">
-                  <StatBox label="TOTAL BILL" value={fmtAED(order.total_amount)} tone="blue" />
-                  <StatBox label="TOTAL PAID" value={fmtAED(order.advance_amount)} tone="green" />
-                  <StatBox label="DUE" value={fmtAED(due)} tone={due > 0 ? "red" : "green"} />
-                </div>
-              )}
+              <div className="grid grid-cols-3 gap-2">
+                <StatBox label="TOTAL BILL" value={fmtAED(order.total_amount)} tone="blue" />
+                <StatBox label="TOTAL PAID" value={fmtAED(order.advance_amount)} tone="green" />
+                <StatBox label="DUE" value={fmtAED(due)} tone={due > 0 ? "red" : "green"} />
+              </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -489,6 +511,75 @@ export function OrderDetailSheet({
                 <div className="pt-4">
                   <PaymentStatusBadge status={displayPaymentStatus(order)} />
                 </div>
+              </div>
+
+              <div className="pt-2 border-t border-gold-100">
+                <div className="flex items-center justify-between mb-1.5">
+                  <Label className="text-xs">Fixing Man</Label>
+                  {!editingFixingMan && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setFixingManValue(order.fixing_man_name ?? "");
+                        setEditingFixingMan(true);
+                      }}
+                      className="h-7 px-2.5 text-xs border-gold-200 hover:bg-gold-50 text-gold-800"
+                    >
+                      <Pencil className="w-3 h-3 mr-1" />
+                      Add/Edit Fixing Man
+                    </Button>
+                  )}
+                </div>
+
+                {!editingFixingMan ? (
+                  <div className="text-sm font-medium text-gold-900 bg-white border border-gold-100 rounded-lg p-2.5">
+                    {order.fixing_man_name ? (
+                      order.fixing_man_name
+                    ) : (
+                      <span className="text-muted-foreground italic font-normal">Not assigned</span>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2 bg-white border border-gold-100 rounded-lg p-2.5">
+                    <Input
+                      value={fixingManValue}
+                      onChange={(e) => setFixingManValue(e.target.value)}
+                      placeholder="Optional"
+                      className="bg-white border-gold-100 rounded-lg placeholder:text-muted-foreground/60 text-sm h-9"
+                      autoFocus
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          saveFixingMan();
+                        } else if (e.key === "Escape") {
+                          setEditingFixingMan(false);
+                        }
+                      }}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 text-xs"
+                        onClick={() => setEditingFixingMan(false)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-8 text-xs gold-gradient"
+                        onClick={saveFixingMan}
+                        disabled={savingFixingMan}
+                      >
+                        {savingFixingMan ? "Saving…" : "Save"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <Button variant="outline" className="w-full" onClick={() => setEditing(true)}>

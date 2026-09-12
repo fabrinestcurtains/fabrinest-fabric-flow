@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -86,13 +86,33 @@ export function ExpenseFormDialog({
     // Resolve or generate valid expense_code (e.g. EXP050926001)
     let code = (editing?.expense_code || "").replace(/^#/, "").trim();
     if (!code) {
+      let expCode: string | null = null;
       try {
-        const { data: expCode } = await supabase.rpc("generate_expense_id", {
+        const { data } = await supabase.rpc("generate_expense_id", {
           p_date: date,
         });
-        code = expCode || generateExpenseCode(new Date(date));
+        expCode = data;
       } catch {
-        code = generateExpenseCode(new Date(date));
+        expCode = null;
+      }
+
+      code = expCode || "";
+      if (!code) {
+        for (let i = 0; i < 5; i++) {
+          const tryCode = generateExpenseCode(new Date(date)); // EXPddMMyyXXX
+          const { data } = await supabase
+            .from("expenses")
+            .select("id")
+            .eq("expense_code", tryCode)
+            .limit(1);
+          if (!data || data.length === 0) {
+            code = tryCode;
+            break;
+          }
+        }
+        code =
+          code ||
+          generateExpenseCode(new Date(date)) + Math.floor(Math.random() * 10);
       }
     }
 

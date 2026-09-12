@@ -94,34 +94,24 @@ export function ExpenseDetailSheet({
       if (!cleanId || cleanId.toLowerCase() === "expense") return null;
 
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+      const isExp = cleanId.toUpperCase().startsWith("EXP");
 
-      // 1. Try matching by expense_code (case-insensitive)
-      const { data: byCode } = await supabase
+      const orClause = isExp
+        ? (isUuid
+            ? `expense_code.eq.${cleanId},expense_code.ilike.${cleanId},id.eq.${cleanId}`
+            : `expense_code.eq.${cleanId},expense_code.ilike.${cleanId}`)
+        : (isUuid
+            ? `id.eq.${cleanId},expense_code.eq.${cleanId},expense_code.ilike.${cleanId}`
+            : `expense_code.eq.${cleanId},expense_code.ilike.${cleanId}`);
+
+      const { data } = await supabase
         .from("expenses")
         .select("*")
-        .ilike("expense_code", cleanId)
+        .or(orClause)
+        .limit(1)
         .maybeSingle();
 
-      if (byCode) return byCode as Expense;
-
-      // 2. If valid UUID, try matching by id
-      if (isUuid) {
-        const { data: byId } = await supabase
-          .from("expenses")
-          .select("*")
-          .eq("id", cleanId)
-          .maybeSingle();
-        if (byId) return byId as Expense;
-      }
-
-      // 3. Fallback: try exact match on expense_code
-      const { data: exactCode } = await supabase
-        .from("expenses")
-        .select("*")
-        .eq("expense_code", cleanId)
-        .maybeSingle();
-
-      return (exactCode ?? null) as Expense | null;
+      return (data ?? null) as Expense | null;
     },
   });
 

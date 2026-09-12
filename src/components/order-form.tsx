@@ -1,29 +1,47 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useQueryClient } from "@tanstack/react-query";
-import { supabase, logActivity, type Customer, type Order, type OrderStatus, type PaymentStatus, type OrderRoom } from "@/lib/supabase";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { RotateCcw } from "lucide-react";
+import { supabase, logActivity, ACTIVE_ORDERS_FILTER, type Customer, type Order, type OrderStatus, type PaymentStatus, type OrderRoom } from "@/lib/supabase";
 import { computePaymentStatus, dueOf, fmtAED } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+} from "@/components/ui/alert-dialog";
 import { RoomsEditor } from "@/components/rooms-editor";
 import { DatePickerField } from "@/components/date-picker-field";
+import { ImportPreviousOrderDialog } from "@/components/import-previous-order-dialog";
 
 export type OrderFormMode =
   | { kind: "new-customer" }
   | { kind: "existing-customer"; customer: Customer }
   | { kind: "edit"; order: Order };
 
+const uid = () =>
+  typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
 export function OrderForm({
   mode,
   onDone,
   onCancel,
+  initialImportOrder,
 }: {
   mode: OrderFormMode;
   onDone?: (orderId: string) => void;
   onCancel?: () => void;
+  initialImportOrder?: Order | null;
 }) {
   const qc = useQueryClient();
   const editing = mode.kind === "edit";
@@ -48,13 +66,101 @@ export function OrderForm({
   const [orderDate, setOrderDate] = useState(initialOrder?.order_date ?? today);
   const [deliveryDate, setDeliveryDate] = useState(initialOrder?.delivery_date ?? "");
   const [total, setTotal] = useState<string>(initialOrder ? String(initialOrder.total_amount) : "");
-  const [discount, setDiscount] = useState<string>(initialOrder ? String(initialOrder.discount_amount ?? 0) : "0");
   const [advance, setAdvance] = useState<string>(initialOrder ? String(initialOrder.advance_amount) : "0");
   const [salesman, setSalesman] = useState(initialOrder?.salesman_name ?? "");
   const [fixingMan, setFixingMan] = useState(initialOrder?.fixing_man_name ?? "");
   const [orderStatus, setOrderStatus] = useState<OrderStatus>(initialOrder?.order_status ?? "New Order");
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(initialOrder?.payment_status ?? "Unpaid");
   const [busy, setBusy] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [pendingImportRooms, setPendingImportRooms] = useState<OrderRoom[] | null>(null);
+
+  const customerId = lockedCustomer?.id;
+  const prevOrdersQ = useQuery({
+    queryKey: ["prev-orders", customerId],
+    queryFn: async () => {
+      if (!customerId) return [];
+      const { data, error } = await supabase
+        .from("orders")
+        .select("id, order_date, total_amount, advance_amount, rooms, created_at, order_status")
+        .eq("customer_id", customerId)
+        .or(ACTIVE_ORDERS_FILTER)
+        .order("created_at", { ascending: false })
+        .limit(6);
+      if (error) throw error;
+      const list = ((data ?? []) as Order[]).filter((o) => o.id !== initialOrder?.id);
+      return list.slice(0, 5);
+    },
+    enabled: !!customerId,
+  });
+
+  const cloneRooms = (roomsToClone: OrderRoom[]): OrderRoom[] => {
+    return (roomsToClone || []).map((room) => ({
+      ...room,
+      id: uid(),
+      windows: (room.windows || []).map((win) => ({
+        ...win,
+        id: uid(),
+      })),
+    }));
+  };
+
+  useEffect(() => {
+    if (
+      initialImportOrder &&
+      Array.isArray(initialImportOrder.rooms) &&
+      initialImportOrder.rooms.length > 0
+    ) {
+      const cloned = cloneRooms(initialImportOrder.rooms as OrderRoom[]);
+      setRooms(cloned);
+      toast.success(
+        `${cloned.length} room${cloned.length !== 1 ? "s" : ""} imported from Order #${initialImportOrder.id}! You can now add/remove or edit.`
+      );
+    }
+  }, [initialImportOrder]);
+
+  const handleImport = (orderToImport: Order) => {
+    const orderRooms = (orderToImport.rooms as OrderRoom[]) || [];
+    if (!orderRooms || orderRooms.length === 0) {
+      return toast.warning("This order has no rooms to import.");
+    }
+    const cloned = cloneRooms(orderRooms);
+    if (rooms.length > 0) {
+      setPendingImportRooms(cloned);
+      setConflictModalOpen(true);
+    } else {
+      setRooms(cloned);
+      setImportOpen(false);
+      toast.success(
+        `${cloned.length} room${cloned.length !== 1 ? "s" : ""} imported! You can now add/remove or edit.`
+      );
+    }
+  };
+
+  const handleReplaceRooms = () => {
+    if (pendingImportRooms) {
+      setRooms(pendingImportRooms);
+      toast.success(
+        `${pendingImportRooms.length} room${pendingImportRooms.length !== 1 ? "s" : ""} imported! (Replaced previous rooms)`
+      );
+    }
+    setPendingImportRooms(null);
+    setConflictModalOpen(false);
+    setImportOpen(false);
+  };
+
+  const handleAppendRooms = () => {
+    if (pendingImportRooms) {
+      setRooms((prev) => [...prev, ...pendingImportRooms]);
+      toast.success(
+        `${pendingImportRooms.length} room${pendingImportRooms.length !== 1 ? "s" : ""} appended! You can now add/remove or edit.`
+      );
+    }
+    setPendingImportRooms(null);
+    setConflictModalOpen(false);
+    setImportOpen(false);
+  };
 
   useEffect(() => {
     if (editing) return;
@@ -69,13 +175,12 @@ export function OrderForm({
   }, [orderDate, editing]);
 
   useEffect(() => {
-    setPaymentStatus(computePaymentStatus(Number(total) || 0, Number(advance) || 0, Number(discount) || 0));
-  }, [total, advance, discount]);
+    setPaymentStatus(computePaymentStatus(Number(total) || 0, Number(advance) || 0));
+  }, [total, advance]);
 
   const due = dueOf({
     total_amount: Number(total) || 0,
     advance_amount: Number(advance) || 0,
-    discount_amount: Number(discount) || 0,
     order_status: orderStatus,
   });
 
@@ -116,21 +221,12 @@ export function OrderForm({
       return toast.error("Total amount must be greater than 0");
     }
 
-    const discNum = Number(discount) || 0;
-    if (discNum < 0) {
-      return toast.error("Discount cannot be negative");
-    }
-    if (discNum > totalNum) {
-      return toast.error("Discount cannot exceed total amount");
-    }
-
     const advNum = Number(advance) || 0;
     if (advNum < 0) {
       return toast.error("Advance cannot be negative");
     }
-    const netPayable = Math.max(0, totalNum - discNum);
-    if (advNum > netPayable) {
-      return toast.error("Advance cannot exceed net amount (Total − Discount)");
+    if (advNum > totalNum) {
+      return toast.error("Advance cannot exceed total amount");
     }
 
     if (!orderDate) {
@@ -158,7 +254,7 @@ export function OrderForm({
         order_date: orderDate,
         delivery_date: deliveryDate || null,
         total_amount: totalNum,
-        discount_amount: discNum,
+        discount_amount: 0,
         advance_amount: advNum,
         salesman_name: salesman || null,
         fixing_man_name: fixingMan || null,
@@ -284,11 +380,27 @@ export function OrderForm({
       )}
 
       {lockedCustomer && (
-        <div className="rounded-md border border-gold-100 bg-gold-50 p-3 text-sm">
-          <div className="font-medium text-gold-900">{lockedCustomer.name}</div>
-          <div className="text-muted-foreground">
-            {lockedCustomer.mobile} {lockedCustomer.address ? `· ${lockedCustomer.address}` : ""}
+        <div className="rounded-md border border-gold-100 bg-gold-50 p-3 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="font-medium text-gold-900">{lockedCustomer.name}</div>
+            <div className="text-muted-foreground text-xs sm:text-sm">
+              {lockedCustomer.mobile} {lockedCustomer.address ? `· ${lockedCustomer.address}` : ""}
+            </div>
           </div>
+          {prevOrdersQ.isLoading ? (
+            <Skeleton className="h-8 w-36 self-start sm:self-auto shrink-0" />
+          ) : (prevOrdersQ.data?.length ?? 0) > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+              className="border-gold-300 text-gold-800 hover:bg-gold-100/80 shrink-0 self-start sm:self-auto font-medium"
+            >
+              <RotateCcw className="w-3.5 h-3.5 mr-1 text-gold-700" />
+              Import Previous ({prevOrdersQ.data!.length} order{prevOrdersQ.data!.length !== 1 ? "s" : ""})
+            </Button>
+          ) : null}
         </div>
       )}
 
@@ -313,54 +425,90 @@ export function OrderForm({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <Label>Order Date *</Label>
-          <DatePickerField value={orderDate} onChange={setOrderDate} />
+          <Label className="text-sm font-medium text-gold-900">Order Date *</Label>
+          <DatePickerField value={orderDate} onChange={setOrderDate} className="bg-white border-gold-100 rounded-lg h-10" />
         </div>
         <div>
-          <Label>Est. Delivery Date</Label>
-          <DatePickerField value={deliveryDate} onChange={setDeliveryDate} />
+          <Label className="text-sm font-medium text-gold-900">Est. Delivery Date</Label>
+          <DatePickerField value={deliveryDate} onChange={setDeliveryDate} className="bg-white border-gold-100 rounded-lg h-10" />
         </div>
         <div>
-          <Label>Total Amount (AED) *</Label>
-          <Input type="number" step="0.01" min="0" value={total} onChange={(e) => setTotal(e.target.value)} required />
+          <Label className="text-sm font-medium text-gold-900">Total Amount (AED) *</Label>
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            value={total}
+            onChange={(e) => setTotal(e.target.value)}
+            required
+            className="bg-white border border-gold-100 rounded-lg h-10 px-3 text-sm"
+          />
         </div>
         <div>
-          <Label>Discount (AED)</Label>
-          <Input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+          <Label className="text-sm font-medium text-gold-900">Advance (AED)</Label>
+          <Input
+            type="number"
+            step="0.01"
+            min="0"
+            value={advance}
+            onChange={(e) => setAdvance(e.target.value)}
+            className="bg-white border border-gold-100 rounded-lg h-10 px-3 text-sm"
+          />
         </div>
         <div>
-          <Label>Advance (AED)</Label>
-          <Input type="number" step="0.01" min="0" value={advance} onChange={(e) => setAdvance(e.target.value)} />
+          <Label className="text-sm font-medium text-gold-900">Due (AED)</Label>
+          <Input
+            value={due.toFixed(2)}
+            readOnly
+            className="bg-gold-50 border border-gold-100 rounded-lg h-10 px-3 text-sm font-medium text-gold-900"
+          />
         </div>
         <div>
-          <Label>Due (AED)</Label>
-          <Input value={due.toFixed(2)} readOnly className="bg-gold-50" />
+          <Label className="text-sm font-medium text-gold-900">Payment Status</Label>
+          <Input
+            value={orderStatus === "Cancelled" ? "Cancelled" : paymentStatus}
+            readOnly
+            className="bg-gold-50 border border-gold-100 rounded-lg h-10 px-3 text-sm font-medium text-gold-900"
+          />
+        </div>
+      </div>
+
+      {/* Salesman & Fixing Man side by side */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label className="text-sm font-medium text-gold-900">Salesman</Label>
+          <Input
+            value={salesman ?? ""}
+            onChange={(e) => setSalesman(e.target.value)}
+            placeholder="Optional"
+            className="bg-white border border-gold-100 rounded-lg h-10 px-3 text-sm placeholder:text-muted-foreground/60"
+          />
         </div>
         <div>
-          <Label>Payment Status</Label>
-          <Input value={orderStatus === "Cancelled" ? "Cancelled" : paymentStatus} readOnly className="bg-gold-50" />
+          <Label className="text-sm font-medium text-gold-900">Fixing Man</Label>
+          <Input
+            value={fixingMan ?? ""}
+            onChange={(e) => setFixingMan(e.target.value)}
+            placeholder="Optional"
+            className="bg-white border border-gold-100 rounded-lg h-10 px-3 text-sm placeholder:text-muted-foreground/60"
+          />
         </div>
-        <div>
-          <Label>Salesman Name</Label>
-          <Input value={salesman ?? ""} onChange={(e) => setSalesman(e.target.value)} />
-        </div>
-        <div>
-          <Label>Fixing Man Name</Label>
-          <Input value={fixingMan ?? ""} onChange={(e) => setFixingMan(e.target.value)} />
-        </div>
-        <div className="md:col-span-2">
-          <Label>Order Status</Label>
-          <Select value={orderStatus} onValueChange={(v) => setOrderStatus(v as OrderStatus)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="New Order">New Order</SelectItem>
-              <SelectItem value="Measurement Complete">Measurement Complete</SelectItem>
-              <SelectItem value="In Process">In Process</SelectItem>
-              <SelectItem value="Completed">Completed</SelectItem>
-              <SelectItem value="Cancelled">Cancelled</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+      </div>
+
+      <div>
+        <Label className="text-sm font-medium text-gold-900">Order Status</Label>
+        <Select value={orderStatus} onValueChange={(v) => setOrderStatus(v as OrderStatus)}>
+          <SelectTrigger className="bg-white border border-gold-100 rounded-lg h-10 px-3 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="New Order">New Order</SelectItem>
+            <SelectItem value="Measurement Complete">Measurement Complete</SelectItem>
+            <SelectItem value="In Process">In Process</SelectItem>
+            <SelectItem value="Completed">Completed</SelectItem>
+            <SelectItem value="Cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
@@ -373,6 +521,54 @@ export function OrderForm({
           {busy ? "Saving…" : editing ? "Update Order" : "Save Order"}
         </Button>
       </div>
+
+      <ImportPreviousOrderDialog
+        open={importOpen}
+        onOpenChange={setImportOpen}
+        customerId={lockedCustomer?.id}
+        onImport={handleImport}
+        prefetchedOrders={prevOrdersQ.data}
+      />
+
+      <AlertDialog open={conflictModalOpen} onOpenChange={setConflictModalOpen}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-gold-900">Existing Rooms Detected</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm text-muted-foreground">
+              You already have {rooms.length} room{rooms.length !== 1 ? "s" : ""} in this order.
+              Do you want to replace all current rooms or append the imported rooms?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setConflictModalOpen(false);
+                setPendingImportRooms(null);
+              }}
+              className="border-gold-300 text-gold-700 hover:bg-gold-50"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleAppendRooms}
+              className="border-gold-500 text-gold-900 hover:bg-gold-50"
+            >
+              Append
+            </Button>
+            <Button
+              type="button"
+              onClick={handleReplaceRooms}
+              className="gold-gradient"
+            >
+              Replace All
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </form>
   );
 }

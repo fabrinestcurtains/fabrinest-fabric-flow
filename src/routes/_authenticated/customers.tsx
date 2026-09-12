@@ -2,7 +2,7 @@ import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import { Search, Users, ArrowDownLeft, ArrowUpRight, GitBranch, Pencil, ChevronDown } from "lucide-react";
+import { Search, Users, ArrowDownLeft, ArrowUpRight, GitBranch, Pencil, ChevronDown, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Pagination } from "@/components/pagination";
 import { OrderForm } from "@/components/order-form";
 import { OrderDetailSheet } from "@/components/order-detail-sheet";
+import { NewOrderModal } from "@/components/new-order-modal";
 import { useDebouncedValue } from "@/hooks/use-debounce";
 
 const search = z.object({ open: z.string().optional() });
@@ -289,6 +290,7 @@ export function CustomerDetail({
   const [openOrderId, setOpenOrderId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [orderAgain, setOrderAgain] = useState(false);
+  const [reorderOrder, setReorderOrder] = useState<Order | null>(null);
   const [editingCustomer, setEditingCustomer] = useState(false);
   const [eName, setEName] = useState("");
   const [eMobile, setEMobile] = useState("");
@@ -565,6 +567,19 @@ export function CustomerDetail({
                           — {fmtDate(o.order_date)}
                         </span>
                         <span className="flex items-center gap-2 shrink-0">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs border-gold-300 text-gold-800 hover:bg-gold-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReorderOrder(o);
+                            }}
+                            title="Reorder this order's rooms"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reorder
+                          </Button>
                           <OrderStatusBadge status={o.order_status} />
                           <ChevronDown
                             className={`w-4 h-4 text-gold-600 transition-transform duration-200 ${
@@ -585,7 +600,7 @@ export function CustomerDetail({
 
                 return (
                   <div key={o.id} className="space-y-2">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="font-medium text-gold-900">
                         Order #{i + 1} —{" "}
                         <button
@@ -597,7 +612,19 @@ export function CustomerDetail({
                         </button>{" "}
                         — {fmtDate(o.order_date)}
                       </div>
-                      <OrderStatusBadge status={o.order_status} />
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs border-gold-300 text-gold-800 hover:bg-gold-50"
+                          onClick={() => setReorderOrder(o)}
+                          title="Reorder this order's rooms"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reorder
+                        </Button>
+                        <OrderStatusBadge status={o.order_status} />
+                      </div>
                     </div>
                     {renderOrderDetails(o, due, pays, hist)}
                     <div className="border-t border-dashed border-gold-200 pt-2" />
@@ -646,6 +673,21 @@ export function CustomerDetail({
           qc.invalidateQueries({ queryKey: ["customer-detail", customerId] });
           qc.invalidateQueries({ queryKey: ["customers-paged"] });
         }
+      }}
+    />
+
+    <NewOrderModal
+      open={!!reorderOrder}
+      onOpenChange={(v) => {
+        if (!v) setReorderOrder(null);
+      }}
+      initialCustomer={data?.customer}
+      initialOrderToImport={reorderOrder}
+      onCreated={() => {
+        setReorderOrder(null);
+        qc.invalidateQueries({ queryKey: ["customer-detail", customerId] });
+        qc.invalidateQueries({ queryKey: ["customers-paged"] });
+        qc.invalidateQueries({ queryKey: ["customer-filter-counts"] });
       }}
     />
   </>

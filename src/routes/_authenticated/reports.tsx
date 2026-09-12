@@ -172,7 +172,11 @@ function ReportsPage() {
       const y = new Date().getFullYear();
       const monthlyDue = Array.from({ length: 12 }, (_, i) => {
         const key = `${y}-${String(i + 1).padStart(2, "0")}`;
-        return { label: format(new Date(y, i, 1), "MMM"), due: byMonthMap[key] ?? 0 };
+        return {
+          label: format(new Date(y, i, 1), "MMM"),
+          fullDate: format(new Date(y, i, 1), "dd MMM, yyyy"),
+          due: byMonthMap[key] ?? 0,
+        };
       });
       return { total, uniqueCustomers, highestDue, oldestDays, monthlyDue };
     },
@@ -434,7 +438,7 @@ function ReportsPage() {
       XLSX.utils.book_append_sheet(wb, summaryWS, "Financial Summary");
 
       const orderRows = [
-        ["Order ID", "Customer", "Mobile", "Order Date", "Total (AED)", "Advance (AED)", "Discount (AED)", "Due (AED)", "Order Status", "Payment Status"],
+        ["Order ID", "Customer", "Mobile", "Order Date", "Total (AED)", "Advance (AED)", "Due (AED)", "Order Status", "Payment Status"],
         ...(cur?.rows ?? []).map((o) => [
           `#${o.id}`,
           (o as any).customers?.name ?? "",
@@ -442,7 +446,6 @@ function ReportsPage() {
           fmtDate(o.order_date),
           Number(o.total_amount),
           Number(o.advance_amount),
-          Number(o.discount_amount ?? 0),
           dueOf(o),
           o.order_status,
           displayPaymentStatus(o),
@@ -451,7 +454,7 @@ function ReportsPage() {
       const ordersWS = XLSX.utils.aoa_to_sheet(orderRows);
       ordersWS["!cols"] = [
         { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 14 },
-        { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 12 },
+        { wch: 14 }, { wch: 16 }, { wch: 12 },
         { wch: 18 }, { wch: 16 },
       ];
       XLSX.utils.book_append_sheet(wb, ordersWS, "Order Details");
@@ -621,7 +624,10 @@ function ReportsPage() {
                           <CartesianGrid strokeDasharray="3 3" stroke="#f0e5d0" vertical={false} />
                           <XAxis dataKey="label" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
                           <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmtAEDShort(v)} />
-                          <Tooltip formatter={(v: number) => fmtAED(v)} />
+                          <Tooltip
+                            labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || _}
+                            formatter={(v: number) => fmtAED(v)}
+                          />
                           <Line type="monotone" dataKey="due" stroke="#dc2626" strokeWidth={2} dot={{ r: 3 }} />
                         </LineChart>
                       </ResponsiveContainer>

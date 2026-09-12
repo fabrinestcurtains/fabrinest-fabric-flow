@@ -17,6 +17,7 @@ import { formatInTimeZone } from "date-fns-tz";
 import {
   Wallet,
   Search,
+  Inbox,
   FileSpreadsheet,
   FileDown,
   Loader2,
@@ -75,21 +76,52 @@ function formatDubaiTime(createdAt?: string | null): string {
 
 function formatDateHeader(dateStr: string): string {
   try {
-    const d = parseISO(dateStr);
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(dateStr.trim());
+    const d = isDateOnly ? parseISO(dateStr.trim()) : new Date(dateStr);
     if (!isValid(d)) return dateStr;
+    const formattedDate = formatInTimeZone(d, "Asia/Dubai", "dd MMM, yyyy");
+
     const dubaiNow = getDubaiNow();
     const todayStr = format(dubaiNow, "yyyy-MM-dd");
     const yesterdayStr = format(subDays(dubaiNow, 1), "yyyy-MM-dd");
-    if (dateStr === todayStr) {
-      return `Today — ${format(d, "dd MMM, yyyy")}`;
+    const targetDateStr = isDateOnly
+      ? dateStr.trim()
+      : formatInTimeZone(d, "Asia/Dubai", "yyyy-MM-dd");
+
+    if (targetDateStr === todayStr) {
+      return `Today — ${formattedDate}`;
     }
-    if (dateStr === yesterdayStr) {
-      return `Yesterday — ${format(d, "dd MMM, yyyy")}`;
+    if (targetDateStr === yesterdayStr) {
+      return `Yesterday — ${formattedDate}`;
     }
-    return format(d, "dd MMM, yyyy");
+    return formattedDate;
   } catch {
     return dateStr;
   }
+}
+
+async function findMatchingOrderIds(s: string): Promise<string[] | null> {
+  if (!s) return null;
+  const { data: matchingCustomers } = await supabase
+    .from("customers")
+    .select("id")
+    .or(`name.ilike.%${s}%,mobile.ilike.%${s}%`)
+    .limit(50);
+  const customerIds = matchingCustomers?.map((c) => c.id) || [];
+
+  let orderQuery = supabase
+    .from("orders")
+    .select("id")
+    .or(ACTIVE_ORDERS_FILTER);
+
+  if (customerIds.length > 0) {
+    orderQuery = orderQuery.or(`id.ilike.%${s}%,customer_id.in.(${customerIds.join(",")})`);
+  } else {
+    orderQuery = orderQuery.ilike("id", `%${s}%`);
+  }
+
+  const { data: matchingOrders } = await orderQuery.limit(100);
+  return matchingOrders?.map((o) => o.id) || [];
 }
 
 export function CollectionsPage() {
@@ -210,9 +242,7 @@ export function CollectionsPage() {
       let q = supabase
         .from("payments")
         .select(
-          s
-            ? "*, orders!inner(id, customer_id, is_deleted, customers!inner(name, mobile))"
-            : "*, orders!inner(id, customer_id, is_deleted, customers(name, mobile))",
+          "*, orders!inner(id, customer_id, is_deleted, customers(name, mobile))",
           { count: "exact" }
         )
         .or(ACTIVE_ORDERS_FILTER, { foreignTable: "orders" })
@@ -236,11 +266,16 @@ export function CollectionsPage() {
         if (customEnd) q = q.lte("payment_date", customEnd);
       }
 
-      // Customer search filter
+      // Search filter: Order ID or Customer Name / Mobile
       if (s) {
-        q = q.or(`name.ilike.%${s}%,mobile.ilike.%${s}%`, {
-          foreignTable: "orders.customers",
-        });
+        const orderIds = await findMatchingOrderIds(s);
+        if (!orderIds || orderIds.length === 0) {
+          return {
+            rows: [],
+            total: 0,
+          };
+        }
+        q = q.in("order_id", orderIds);
       }
 
       // Payment method filter (Bank vs Cash)
@@ -283,7 +318,12 @@ export function CollectionsPage() {
     const map = new Map<string, { totalAmount: number; items: any[] }>();
 
     for (const item of rawRows) {
-      const d = item.payment_date || "Unknown";
+      const rawDate = item.payment_date;
+      const date = rawDate ? new Date(rawDate) : null;
+      const d =
+        date && isValid(date)
+          ? formatInTimeZone(date, "Asia/Dubai", "yyyy-MM-dd")
+          : rawDate || "Unknown";
       if (!map.has(d)) {
         map.set(d, { totalAmount: 0, items: [] });
       }
@@ -313,9 +353,7 @@ export function CollectionsPage() {
     let q = supabase
       .from("payments")
       .select(
-        s
-          ? "*, orders!inner(id, customer_id, is_deleted, customers!inner(name, mobile))"
-          : "*, orders!inner(id, customer_id, is_deleted, customers(name, mobile))"
+        "*, orders!inner(id, customer_id, is_deleted, customers(name, mobile))"
       )
       .or(ACTIVE_ORDERS_FILTER, { foreignTable: "orders" })
       .eq("payment_type", "payment");
@@ -338,9 +376,11 @@ export function CollectionsPage() {
     }
 
     if (s) {
-      q = q.or(`name.ilike.%${s}%,mobile.ilike.%${s}%`, {
-        foreignTable: "orders.customers",
-      });
+      const orderIds = await findMatchingOrderIds(s);
+      if (!orderIds || orderIds.length === 0) {
+        return [];
+      }
+      q = q.in("order_id", orderIds);
     }
 
     if (methodFilter === "Bank") {
@@ -564,21 +604,8 @@ export function CollectionsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Top Header & Export Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl md:text-2xl font-bold text-gold-900">Collections</h1>
-            <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full border border-emerald-200">
-              Asia/Dubai (UTC+4)
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Payment transactions received from active customer orders
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
+      {/* Top Export Actions */}
+      <div className="flex items-center justify-end gap-2">
           <Button
             variant="outline"
             size="sm"
@@ -614,7 +641,6 @@ export function CollectionsPage() {
             )}
           </Button>
         </div>
-      </div>
 
       {/* 4 Summary Cards Grid */}
       <ChartErrorBoundary>
@@ -795,7 +821,7 @@ export function CollectionsPage() {
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search customer by name or mobile..."
+            placeholder="Search customer by name, mobile, or ID (#...)"
             className="pl-9 bg-white text-sm"
           />
           {search && (
@@ -832,7 +858,13 @@ export function CollectionsPage() {
           ) : rawRows.length === 0 ? (
             <div className="bg-white border border-gold-100 rounded-xl p-8">
               <EmptyState
-                icon={<Wallet className="w-10 h-10 text-gold-400" />}
+                icon={
+                  search ? (
+                    <Search className="w-10 h-10 text-gold-400" />
+                  ) : (
+                    <Inbox className="w-10 h-10 text-gold-400" />
+                  )
+                }
                 title="No collections found for selected filters"
                 description="Try clearing your search, selecting a different date range, or switching payment methods."
                 action={

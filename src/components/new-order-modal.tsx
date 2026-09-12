@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { supabase, sanitizeSearch, type Customer } from "@/lib/supabase";
+import { supabase, sanitizeSearch, type Customer, type Order } from "@/lib/supabase";
 import { OrderForm } from "./order-form";
 import { UserPlus, Users } from "lucide-react";
 import { useDebouncedValue } from "@/hooks/use-debounce";
@@ -12,15 +12,26 @@ export function NewOrderModal({
   open,
   onOpenChange,
   onCreated,
+  initialCustomer,
+  initialOrderToImport,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onCreated?: (id: string) => void;
+  initialCustomer?: Customer | null;
+  initialOrderToImport?: Order | null;
 }) {
   const [step, setStep] = useState<"choose" | "new" | "existing">("choose");
   const [pickedCustomer, setPickedCustomer] = useState<Customer | null>(null);
   const [q, setQ] = useState("");
   const debouncedQ = useDebouncedValue(q, 300);
+
+  useEffect(() => {
+    if (open && initialCustomer) {
+      setStep("existing");
+      setPickedCustomer(initialCustomer);
+    }
+  }, [open, initialCustomer]);
 
   const results = useQuery({
     queryKey: ["cust-search", debouncedQ],
@@ -126,6 +137,7 @@ export function NewOrderModal({
             <Button variant="ghost" size="sm" onClick={() => setPickedCustomer(null)}>← Change customer</Button>
             <OrderForm
               mode={{ kind: "existing-customer", customer: pickedCustomer }}
+              initialImportOrder={initialOrderToImport}
               onDone={(id) => {
                 onCreated?.(id);
                 onOpenChange(false);

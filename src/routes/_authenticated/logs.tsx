@@ -206,7 +206,7 @@ function formatDateGroupHeader(dateStr: string, count: number): string {
     const dNow = getDubaiNow();
     const todayStr = format(dNow, "yyyy-MM-dd");
     const yesterdayStr = format(subDays(dNow, 1), "yyyy-MM-dd");
-    const formattedDate = format(d, "dd MMM, yyyy");
+    const formattedDate = formatInTimeZone(d, "Asia/Dubai", "dd MMM, yyyy");
     const countText = `${count} ${count === 1 ? "activity" : "activities"}`;
 
     if (dateStr === todayStr) {
@@ -384,7 +384,7 @@ export function LogsPage() {
 
   // Filtered logs
   const filtered = useMemo(() => {
-    const q = debouncedSearch.toLowerCase().trim();
+    const q = debouncedSearch.toLowerCase().trim().replace(/^#+/, "");
     return allLogs.filter((l) => {
       // Type filter
       const matchType =
@@ -400,11 +400,13 @@ export function LogsPage() {
       const isExp = l.activity_type.includes("expense");
       const expRef = isExp ? getExpenseRef(l) : null;
       const cleanRef = (l.reference_id ?? "").toLowerCase() === "expense" ? "" : (l.reference_id ?? "");
+      const cleanRefStripped = cleanRef.replace(/^#+/, "").toLowerCase();
+      const expRefStripped = (expRef ?? "").replace(/^#+/, "").toLowerCase();
       const matchSearch =
         !q ||
         l.title.toLowerCase().includes(q) ||
-        cleanRef.toLowerCase().includes(q) ||
-        (expRef ?? "").toLowerCase().includes(q) ||
+        cleanRefStripped.includes(q) ||
+        expRefStripped.includes(q) ||
         (l.description ?? "").toLowerCase().includes(q);
 
       if (!matchType || !matchSearch) return false;
@@ -665,44 +667,24 @@ export function LogsPage() {
 
   return (
     <div className="space-y-4">
-      {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl md:text-2xl font-bold text-gold-900 tracking-tight flex items-center gap-2">
-              <Activity className="w-5 h-5 text-gold-600" />
-              Activity Logs
-            </h1>
-            <div className="inline-flex items-center gap-1.5 text-xs bg-emerald-50 text-emerald-800 font-medium px-2.5 py-0.5 rounded-full border border-emerald-200">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-              <span>{format(getDubaiNow(), "dd/MM/yyyy")} Dubai UAE</span>
-              <span className="text-emerald-600">· Dubai time</span>
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Real-time business audit trail with interactive order and customer details
-          </p>
-        </div>
-
-        {/* Search Input: w-full on mobile, w-[360px] on md, height 42px, rounded 12px, border gold-100 */}
-        <div className="relative w-full md:w-[360px]">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search activity, order ID, details…"
-            className="pl-9 pr-9 bg-white h-[42px] rounded-[12px] border-gold-100 text-sm focus-visible:ring-gold-400 shadow-2xs"
-          />
-          {search && (
-            <button
-              type="button"
-              onClick={() => setSearch("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
-            >
-              Clear
-            </button>
-          )}
-        </div>
+      {/* Search Input */}
+      <div className="relative w-full">
+        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search activity, order ID, details…"
+          className="pl-9 pr-9 bg-white h-[42px] rounded-[12px] border-gold-100 text-sm focus-visible:ring-gold-400 shadow-2xs"
+        />
+        {search && (
+          <button
+            type="button"
+            onClick={() => setSearch("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {/* Controls Card: Wrap filters in white card bg-white border gold-100 rounded 16px p-[14px] shadow */}
