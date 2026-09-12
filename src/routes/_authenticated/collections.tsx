@@ -41,9 +41,7 @@ import {
   fmtAED,
   fmtDate,
   getDubaiNow,
-  getPaymentMethod,
 } from "@/lib/format";
-import { PaymentMethodBadge } from "@/components/status-badges";
 import { OrderDetailSheet } from "@/components/order-detail-sheet";
 import { EmptyState } from "@/components/empty-state";
 import { Pagination } from "@/components/pagination";
@@ -59,7 +57,6 @@ export const Route = createFileRoute("/_authenticated/collections")({
 });
 
 type DateFilterMode = "today" | "yesterday" | "week" | "month" | "all" | "custom";
-type MethodFilter = "All" | "Cash" | "Bank";
 
 const PAGE_SIZE = 20;
 
@@ -129,7 +126,6 @@ export function CollectionsPage() {
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
   const [search, setSearch] = useState("");
-  const [methodFilter, setMethodFilter] = useState<MethodFilter>("All");
   const [page, setPage] = useState(1);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [collapsedDates, setCollapsedDates] = useState<Record<string, boolean>>({});
@@ -140,7 +136,7 @@ export function CollectionsPage() {
   // Reset page when filters change
   useEffect(() => {
     setPage(1);
-  }, [dateFilter, customStart, customEnd, debouncedSearch, methodFilter]);
+  }, [dateFilter, customStart, customEnd, debouncedSearch]);
 
   // Dubai date calculations
   const dubaiDates = useMemo(() => {
@@ -232,7 +228,6 @@ export function CollectionsPage() {
       customStart,
       customEnd,
       debouncedSearch,
-      methodFilter,
       page,
       dubaiDates.todayStr,
     ],
@@ -276,17 +271,6 @@ export function CollectionsPage() {
           };
         }
         q = q.in("order_id", orderIds);
-      }
-
-      // Payment method filter (Bank vs Cash)
-      if (methodFilter === "Bank") {
-        q = q.or(
-          "note.ilike.%bank%,note.ilike.%transfer%,note.ilike.%card%,note.ilike.%online%,note.ilike.%cheque%,note.ilike.%pos%,note.ilike.%wire%,note.ilike.%deposit%"
-        );
-      } else if (methodFilter === "Cash") {
-        q = q.or(
-          "note.is.null,and(note.not.ilike.%bank%,note.not.ilike.%transfer%,note.not.ilike.%card%,note.not.ilike.%online%,note.not.ilike.%cheque%,note.not.ilike.%pos%,note.not.ilike.%wire%,note.not.ilike.%deposit%)"
-        );
       }
 
       q = q
@@ -383,16 +367,6 @@ export function CollectionsPage() {
       q = q.in("order_id", orderIds);
     }
 
-    if (methodFilter === "Bank") {
-      q = q.or(
-        "note.ilike.%bank%,note.ilike.%transfer%,note.ilike.%card%,note.ilike.%online%,note.ilike.%cheque%,note.ilike.%pos%,note.ilike.%wire%,note.ilike.%deposit%"
-      );
-    } else if (methodFilter === "Cash") {
-      q = q.or(
-        "note.is.null,and(note.not.ilike.%bank%,note.not.ilike.%transfer%,note.not.ilike.%card%,note.not.ilike.%online%,note.not.ilike.%cheque%,note.not.ilike.%pos%,note.not.ilike.%wire%,note.not.ilike.%deposit%)"
-      );
-    }
-
     q = q
       .order("payment_date", { ascending: false })
       .order("created_at", { ascending: false })
@@ -422,7 +396,7 @@ export function CollectionsPage() {
       const rows: (string | number)[][] = [
         ["FABRINEST CURTAINS — COLLECTIONS REPORT"],
         [`Generated: ${reportDate} (Asia/Dubai)`],
-        [`Filter: Date=${dateFilter} | Method=${methodFilter} | Records=${items.length}`],
+        [`Filter: Date=${dateFilter} | Records=${items.length}`],
         [`Total Collections: AED ${totalSum.toLocaleString("en-US", { minimumFractionDigits: 2 })}`],
         [],
         [
@@ -432,11 +406,9 @@ export function CollectionsPage() {
           "Customer Mobile",
           "Order ID",
           "Amount (AED)",
-          "Payment Method",
           "Note",
         ],
         ...items.map((p) => {
-          const method = getPaymentMethod(p);
           const cust = p.orders?.customers;
           const dubaiTime = formatDubaiTime(p.created_at);
           return [
@@ -446,12 +418,11 @@ export function CollectionsPage() {
             cust?.mobile ?? "—",
             `#${p.order_id || p.orders?.id || ""}`,
             Number(p.amount) || 0,
-            method,
             p.note || "",
           ];
         }),
         [],
-        ["TOTAL", "", "", "", "", totalSum, "", ""],
+        ["TOTAL", "", "", "", "", totalSum, ""],
       ];
 
       const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -459,7 +430,6 @@ export function CollectionsPage() {
         { wch: 16 },
         { wch: 18 },
         { wch: 24 },
-        { wch: 16 },
         { wch: 16 },
         { wch: 16 },
         { wch: 16 },
@@ -523,8 +493,8 @@ export function CollectionsPage() {
       y += 6;
 
       // Table Columns
-      const colX = [12, 38, 70, 108, 134, 154, 174];
-      const headers = ["Date", "Time (Dubai)", "Customer", "Order ID", "Method", "Amount", "Note"];
+      const colX = [12, 38, 72, 118, 148, 172];
+      const headers = ["Date", "Time (Dubai)", "Customer", "Order ID", "Amount", "Note"];
 
       pdf.setFillColor(243, 237, 226);
       pdf.rect(10, y - 4, pageW - 20, 7, "F");
@@ -553,10 +523,9 @@ export function CollectionsPage() {
           pdf.setFontSize(7.5);
         }
 
-        const method = getPaymentMethod(p);
-        const custName = (p.orders?.customers?.name ?? "—").slice(0, 20);
+        const custName = (p.orders?.customers?.name ?? "—").slice(0, 22);
         const orderId = `#${(p.order_id || p.orders?.id || "").slice(0, 12)}`;
-        const note = (p.note || "—").slice(0, 14);
+        const note = (p.note || "—").slice(0, 16);
         const dubaiTime = formatDubaiTime(p.created_at);
 
         pdf.setTextColor(70);
@@ -564,15 +533,14 @@ export function CollectionsPage() {
         pdf.text(dubaiTime !== "—" ? `${dubaiTime} (Dubai)` : "—", colX[1], y);
         pdf.text(custName, colX[2], y);
         pdf.text(orderId, colX[3], y);
-        pdf.text(method, colX[4], y);
 
         pdf.setFont("helvetica", "bold");
         pdf.setTextColor(22, 101, 52); // green-700
-        pdf.text(`+${Number(p.amount).toLocaleString("en-US")}`, colX[5], y);
+        pdf.text(`+${Number(p.amount).toLocaleString("en-US")}`, colX[4], y);
 
         pdf.setFont("helvetica", "normal");
         pdf.setTextColor(100);
-        pdf.text(note, colX[6], y);
+        pdf.text(note, colX[5], y);
 
         y += 5.5;
       }
@@ -587,7 +555,7 @@ export function CollectionsPage() {
       pdf.setTextColor(120, 60, 10);
       pdf.text("Total Collections:", colX[3], y);
       pdf.setTextColor(22, 101, 52);
-      pdf.text(`AED ${totalSum.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, colX[5], y);
+      pdf.text(`AED ${totalSum.toLocaleString("en-US", { minimumFractionDigits: 2 })}`, colX[4], y);
 
       const filename = `Fabrinest-Collections-${format(new Date(), "yyyy-MM-dd")}.pdf`;
       pdf.save(filename);
@@ -729,52 +697,31 @@ export function CollectionsPage() {
 
       {/* Filter Bar */}
       <div className="bg-white border border-gold-100 rounded-xl p-4 shadow-xs space-y-3">
-        {/* Row 1: Date quick buttons + Method filter */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {(
-              [
-                { id: "today", label: "Today" },
-                { id: "yesterday", label: "Yesterday" },
-                { id: "week", label: "This Week" },
-                { id: "month", label: "This Month" },
-                { id: "all", label: "All Time" },
-                { id: "custom", label: "Custom" },
-              ] as { id: DateFilterMode; label: string }[]
-            ).map((btn) => (
-              <button
-                key={btn.id}
-                type="button"
-                onClick={() => setDateFilter(btn.id)}
-                className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all min-h-[36px] flex items-center justify-center ${
-                  dateFilter === btn.id
-                    ? "bg-gold-500 text-white border-gold-600 shadow-xs"
-                    : "bg-white text-muted-foreground border-gold-100 hover:bg-gold-50/60 hover:text-gold-900"
-                }`}
-              >
-                {btn.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Payment Method Filter */}
-          <div className="hidden md:flex items-center gap-1 bg-gold-50/70 p-1 rounded-lg border border-gold-100 flex-wrap self-start sm:self-auto">
-            <span className="text-[11px] text-muted-foreground px-2 font-medium">Method:</span>
-            {(["All", "Cash", "Bank"] as MethodFilter[]).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMethodFilter(m)}
-                className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors min-h-[36px] flex items-center justify-center ${
-                  methodFilter === m
-                    ? "bg-white text-gold-900 shadow-xs border border-gold-200"
-                    : "text-muted-foreground hover:text-gold-900"
-                }`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
+        {/* Row 1: Date quick buttons */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {(
+            [
+              { id: "today", label: "Today" },
+              { id: "yesterday", label: "Yesterday" },
+              { id: "week", label: "This Week" },
+              { id: "month", label: "This Month" },
+              { id: "all", label: "All Time" },
+              { id: "custom", label: "Custom" },
+            ] as { id: DateFilterMode; label: string }[]
+          ).map((btn) => (
+            <button
+              key={btn.id}
+              type="button"
+              onClick={() => setDateFilter(btn.id)}
+              className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all min-h-[36px] flex items-center justify-center ${
+                dateFilter === btn.id
+                  ? "bg-gold-500 text-white border-gold-600 shadow-xs"
+                  : "bg-white text-muted-foreground border-gold-100 hover:bg-gold-50/60 hover:text-gold-900"
+              }`}
+            >
+              {btn.label}
+            </button>
+          ))}
         </div>
 
         {/* Custom date picker row (if custom is selected) */}
@@ -842,8 +789,8 @@ export function CollectionsPage() {
           {collectionsQuery.isLoading
             ? "Loading collections..."
             : `Showing ${rawRows.length} of ${totalRecords} collection${totalRecords === 1 ? "" : "s"} ${
-                methodFilter !== "All" ? `· ${methodFilter} only` : ""
-              } ${debouncedSearch ? `· matching "${debouncedSearch}"` : ""}`}
+                debouncedSearch ? `· matching "${debouncedSearch}"` : ""
+              }`}
         </div>
       </div>
 
@@ -866,15 +813,14 @@ export function CollectionsPage() {
                   )
                 }
                 title="No collections found for selected filters"
-                description="Try clearing your search, selecting a different date range, or switching payment methods."
+                description="Try clearing your search or selecting a different date range."
                 action={
-                  (dateFilter !== "all" || methodFilter !== "All" || search) && (
+                  (dateFilter !== "all" || search) && (
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => {
                         setDateFilter("all");
-                        setMethodFilter("All");
                         setSearch("");
                         setCustomStart("");
                         setCustomEnd("");
@@ -934,7 +880,6 @@ export function CollectionsPage() {
                           const cust = p.orders?.customers;
                           const custName = cust?.name ?? "—";
                           const custMobile = cust?.mobile;
-                          const method = getPaymentMethod(p);
                           const initial = custName.slice(0, 1).toUpperCase();
 
                           return (
@@ -977,10 +922,9 @@ export function CollectionsPage() {
                                   ) : (
                                     <span className="text-muted-foreground">—</span>
                                   )}
-                                  <PaymentMethodBadge method={method} />
                                 </div>
                                 {p.note && (
-                                  <span className="truncate max-w-[100px] text-muted-foreground text-[10px] text-right">
+                                  <span className="truncate max-w-[140px] text-muted-foreground text-[10px] text-right">
                                     {p.note}
                                   </span>
                                 )}
@@ -998,12 +942,11 @@ export function CollectionsPage() {
                         <table className="w-full min-w-[700px] text-sm border-collapse">
                           <thead>
                             <tr className="bg-white text-[10px] uppercase tracking-wider text-muted-foreground border-b border-gold-50">
-                              <th className="px-4 py-3 text-left font-medium w-[10%] min-w-[80px]">Time (Dubai)</th>
-                              <th className="px-4 py-3 text-left font-medium w-[22%] min-w-[160px]">Customer</th>
-                              <th className="px-4 py-3 text-left font-medium w-[15%] min-w-[120px]">Order ID</th>
-                              <th className="px-4 py-3 text-right font-medium w-[13%] min-w-[100px]">Amount</th>
-                              <th className="px-4 py-3 text-center font-medium w-[10%] min-w-[70px]">Method</th>
-                              <th className="px-4 py-3 text-left font-medium w-[20%] min-w-[120px]">Note</th>
+                              <th className="px-4 py-3 text-left font-medium w-[12%] min-w-[80px]">Time (Dubai)</th>
+                              <th className="px-4 py-3 text-left font-medium w-[26%] min-w-[160px]">Customer</th>
+                              <th className="px-4 py-3 text-left font-medium w-[16%] min-w-[120px]">Order ID</th>
+                              <th className="px-4 py-3 text-right font-medium w-[14%] min-w-[100px]">Amount</th>
+                              <th className="px-4 py-3 text-left font-medium w-[22%] min-w-[140px]">Note</th>
                               <th className="px-4 py-3 text-right font-medium w-[10%] min-w-[50px]">Action</th>
                             </tr>
                           </thead>
@@ -1013,7 +956,6 @@ export function CollectionsPage() {
                               const cust = p.orders?.customers;
                               const custName = cust?.name ?? "—";
                               const custMobile = cust?.mobile;
-                              const method = getPaymentMethod(p);
                               const initial = custName.slice(0, 1).toUpperCase();
 
                               return (
@@ -1022,12 +964,12 @@ export function CollectionsPage() {
                                   className="hover:bg-gold-50/50 transition-colors"
                                 >
                                   {/* Time */}
-                                  <td className="px-4 py-3.5 align-middle text-xs text-muted-foreground whitespace-nowrap font-medium w-[10%] min-w-[80px]">
+                                  <td className="px-4 py-3.5 align-middle text-xs text-muted-foreground whitespace-nowrap font-medium w-[12%] min-w-[80px]">
                                     {formatDubaiTime(p.created_at)}
                                   </td>
 
                                   {/* Customer with avatar */}
-                                  <td className="px-4 py-3.5 align-middle w-[22%] min-w-[160px]">
+                                  <td className="px-4 py-3.5 align-middle w-[26%] min-w-[160px]">
                                     <div className="flex items-center gap-2 min-w-0">
                                       <div className="w-7 h-7 rounded-full bg-gold-100 text-gold-900 flex items-center justify-center text-xs font-bold shrink-0">
                                         {initial}
@@ -1046,7 +988,7 @@ export function CollectionsPage() {
                                   </td>
 
                                   {/* Order ID (Clickable) */}
-                                  <td className="px-4 py-3.5 align-middle whitespace-nowrap w-[15%] min-w-[120px]">
+                                  <td className="px-4 py-3.5 align-middle whitespace-nowrap w-[16%] min-w-[120px]">
                                     {orderId ? (
                                       <button
                                         type="button"
@@ -1061,19 +1003,12 @@ export function CollectionsPage() {
                                   </td>
 
                                   {/* Amount green +AED */}
-                                  <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap font-bold text-green-600 text-xs w-[13%] min-w-[100px]">
+                                  <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap font-bold text-green-600 text-xs w-[14%] min-w-[100px]">
                                     +{fmtAED(p.amount)}
                                   </td>
 
-                                  {/* Method badge */}
-                                  <td className="px-4 py-3.5 align-middle text-center whitespace-nowrap w-[10%] min-w-[70px]">
-                                    <div className="flex items-center justify-center">
-                                      <PaymentMethodBadge method={method} />
-                                    </div>
-                                  </td>
-
                                   {/* Note */}
-                                  <td className="px-4 py-3.5 align-middle text-xs text-muted-foreground truncate w-[20%] min-w-[120px] max-w-[200px]">
+                                  <td className="px-4 py-3.5 align-middle text-xs text-muted-foreground truncate w-[22%] min-w-[140px] max-w-[220px]">
                                     <span className="block truncate" title={p.note || ""}>
                                       {p.note || "—"}
                                     </span>

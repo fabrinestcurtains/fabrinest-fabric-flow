@@ -10,10 +10,10 @@ import {
   PieChart, Pie, Cell, BarChart, Bar,
 } from "recharts";
 import { supabase, type Order, ACTIVE_ORDERS_FILTER } from "@/lib/supabase";
-import { fmtAED, fmtAEDShort, fmtDate, dueOf, ONGOING_STATUSES, fmtDubaiDateWithRelative, getPaymentMethod } from "@/lib/format";
+import { fmtAED, fmtAEDShort, fmtDate, dueOf, ONGOING_STATUSES, fmtDubaiDateWithRelative } from "@/lib/format";
 import { NewOrderModal } from "@/components/new-order-modal";
 import { AdvancedSearchModal } from "@/components/advanced-search-modal";
-import { OrderStatusBadge, PaymentMethodBadge } from "@/components/status-badges";
+import { OrderStatusBadge } from "@/components/status-badges";
 import { OrderDetailSheet } from "@/components/order-detail-sheet";
 import { ChartErrorBoundary } from "@/components/chart-error-boundary";
 
@@ -484,7 +484,6 @@ function Dashboard() {
             {(recentCollections.data ?? []).map((p) => {
               const orderId = p.order_id || p.orders?.id;
               const customerName = p.orders?.customers?.name ?? "—";
-              const method = getPaymentMethod(p);
               return (
                 <div
                   key={p.id}
@@ -503,8 +502,6 @@ function Dashboard() {
                         <span className="font-mono text-gold-700 font-medium">#{orderId}</span>
                       </>
                     )}
-                    <span>•</span>
-                    <PaymentMethodBadge method={method} />
                     {p.note && (
                       <>
                         <span>•</span>
@@ -530,7 +527,6 @@ function Dashboard() {
                     <th className="text-left px-4 py-2 font-medium">Customer</th>
                     <th className="text-left px-4 py-2 font-medium">Order ID</th>
                     <th className="text-right px-4 py-2 font-medium">Amount</th>
-                    <th className="text-left px-4 py-2 font-medium">Type</th>
                     <th className="text-left px-4 py-2 font-medium">Note</th>
                   </tr>
                 </thead>
@@ -538,7 +534,6 @@ function Dashboard() {
                   {(recentCollections.data ?? []).map((p) => {
                     const orderId = p.order_id || p.orders?.id;
                     const customerName = p.orders?.customers?.name ?? "—";
-                    const method = getPaymentMethod(p);
                     return (
                       <tr
                         key={p.id}
@@ -553,9 +548,6 @@ function Dashboard() {
                         <td className="px-4 py-3 text-right font-bold text-green-600 whitespace-nowrap">
                           +{fmtAED(p.amount)}
                         </td>
-                        <td className="px-4 py-3">
-                          <PaymentMethodBadge method={method} />
-                        </td>
                         <td className="px-4 py-3 text-xs text-muted-foreground max-w-[220px] truncate">
                           {p.note || "—"}
                         </td>
@@ -564,7 +556,7 @@ function Dashboard() {
                   })}
                   {(recentCollections.data ?? []).length === 0 && (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                      <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                         No collections yet
                       </td>
                     </tr>
